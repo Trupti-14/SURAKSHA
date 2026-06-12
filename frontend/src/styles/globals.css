@@ -1,0 +1,61 @@
+/*
+  Vanguard Design System
+  Centralized visual primitives for enterprise React surfaces, SOC dashboards,
+  and security operations workflows.
+*/
+
+/* Theme Tokens
+   Core color variables exposed to Tailwind v4 utilities. */
+@theme {
+  --color-vanguard-bg: #07111f;
+  --color-vanguard-surface: #0f1b2d;
+  --color-vanguard-border: #223047;
+  --color-vanguard-accent: #38bdf8;
+  --color-vanguard-accent-dim: #0ea5e9;
+  --color-vanguard-warning: #f59e0b;
+  --color-vanguard-danger: #ef4444;
+  --color-vanguard-muted: #94a3b8;
+  --color-vanguard-text: #e5edf7;
+}
+
+/* Shadow Tokens
+   Neo-Brutalist elevation scale used across reusable UI primitives. */
+@theme {
+  --shadow-brutal: 0 18px 44px rgba(2, 6, 23, 0.32);
+  --shadow-brutal-lg: 0 24px 64px rgba(2, 6, 23, 0.42);
+  --shadow-brutal-sm: 0 10px 24px rgba(2, 6, 23, 0.28);
+}
+
+/* Typography
+   Platform-native type stack for legible, low-latency operational interfaces. */
+@layer base {
+  body {
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+/* Base Layer
+   Global document defaults shared by all Vanguard application surfaces. */
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 bg-vanguard-bg text-vanguard-text antialiased;
+    font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1;
+  }
+}
+
+/* Root Layout
+   Full-height application foundation for authenticated dashboards and tools. */
+@layer base {
+  html,
+  body {
+    @apply min-h-screen;
+  }
+
+  #root {
+    @apply min-h-screen w-full;
+  }
+}

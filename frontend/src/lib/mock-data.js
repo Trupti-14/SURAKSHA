@@ -1,0 +1,151 @@
+export const activeSessions = [
+  {
+    customerId: "CB-CUST-10482",
+    sessionId: "SES-MUM-9F21",
+    name: "Asha Rao",
+    device: "Windows 11 Enterprise · Managed Laptop",
+    location: "Mumbai, Maharashtra",
+    riskScore: 18,
+    status: "NORMAL",
+    requiresMfa: false,
+    sessionBlocked: false,
+    lastSeen: "16:42:01",
+    triggers: [
+      {
+        id: "trg-10482-1",
+        anomaly: "Trusted device attestation confirmed",
+        severity: "LOW",
+        timestamp: "16:40:18",
+      },
+      {
+        id: "trg-10482-2",
+        anomaly: "Passkey cadence aligned with enrolled baseline",
+        severity: "LOW",
+        timestamp: "16:41:37",
+      },
+    ],
+  },
+  {
+    customerId: "CB-CUST-20891",
+    sessionId: "SES-BLR-A7C4",
+    name: "Rohit Mehta",
+    device: "macOS 15 · Privileged Analyst Workstation",
+    location: "Bengaluru, Karnataka",
+    riskScore: 44,
+    status: "ESCALATED",
+    requiresMfa: true,
+    sessionBlocked: false,
+    lastSeen: "16:42:11",
+    triggers: [
+      {
+        id: "trg-20891-1",
+        anomaly: "Typing cadence drift outside normal envelope",
+        severity: "MEDIUM",
+        timestamp: "16:41:06",
+      },
+      {
+        id: "trg-20891-2",
+        anomaly: "Fresh device posture signal requires MFA step-up",
+        severity: "MEDIUM",
+        timestamp: "16:41:58",
+      },
+    ],
+  },
+  {
+    customerId: "CB-CUST-77210",
+    sessionId: "SES-DEL-E113",
+    name: "Nisha Iyer",
+    device: "Android 15 · Mobile Banking Session",
+    location: "New Delhi, Delhi",
+    riskScore: 82,
+    status: "CRITICAL",
+    requiresMfa: true,
+    sessionBlocked: true,
+    lastSeen: "16:42:19",
+    triggers: [
+      {
+        id: "trg-77210-1",
+        anomaly: "High-velocity mouse vector acceleration spike",
+        severity: "HIGH",
+        timestamp: "16:42:01",
+      },
+      {
+        id: "trg-77210-2",
+        anomaly: "Impossible geo transition compared with prior session",
+        severity: "HIGH",
+        timestamp: "16:42:12",
+      },
+      {
+        id: "trg-77210-3",
+        anomaly: "Sensitive transfer journey blocked pending review",
+        severity: "HIGH",
+        timestamp: "16:42:19",
+      },
+    ],
+  },
+  {
+    customerId: "CB-CUST-33176",
+    sessionId: "SES-HYD-41BD",
+    name: "Farhan Khan",
+    device: "Windows 10 · Branch Terminal",
+    location: "Hyderabad, Telangana",
+    riskScore: 63,
+    status: "ESCALATED",
+    requiresMfa: true,
+    sessionBlocked: false,
+    lastSeen: "16:41:44",
+    triggers: [
+      {
+        id: "trg-33176-1",
+        anomaly: "Pointer path entropy above peer baseline",
+        severity: "MEDIUM",
+        timestamp: "16:40:55",
+      },
+      {
+        id: "trg-33176-2",
+        anomaly: "Repeated beneficiary edit sequence detected",
+        severity: "MEDIUM",
+        timestamp: "16:41:44",
+      },
+    ],
+  },
+  {
+    customerId: "CB-CUST-59017",
+    sessionId: "SES-KOL-63AA",
+    name: "Meera Das",
+    device: "iOS 19 · Trusted Mobile Device",
+    location: "Kolkata, West Bengal",
+    riskScore: 27,
+    status: "NORMAL",
+    requiresMfa: false,
+    sessionBlocked: false,
+    lastSeen: "16:42:05",
+    triggers: [
+      {
+        id: "trg-59017-1",
+        anomaly: "Device and behavioral signals aligned",
+        severity: "LOW",
+        timestamp: "16:39:31",
+      },
+    ],
+  },
+];
+
+export const integrationSlots = [
+  {
+    title: "Behavioral Telemetry",
+    description: "Future telemetry engine will push risk payloads into session state.",
+  },
+  {
+    title: "Document Forensics",
+    description: "Future document analysis results can attach evidence to sessions.",
+  },
+  {
+    title: "Agentic Compliance",
+    description: "Future workflows can open audit tasks from escalated sessions.",
+  },
+  {
+    title: "Security/Admin",
+    description: "Future admin actions can block, unlock, or escalate sessions.",
+  },
+];

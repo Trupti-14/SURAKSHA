@@ -1,0 +1,22 @@
+# Vanguard Cloudflare Tunnel configuration for hackathon demo access.
+#
+# Before real deployment, replace every placeholder below:
+# - tunnel: use the UUID returned by `cloudflared tunnel create <name>`.
+# - credentials-file: use the real credentials JSON path for that tunnel.
+# - hostname values: replace example.com hostnames with approved DNS names.
+# - service URLs: update only if the local frontend/backend ports change.
+
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: /etc/cloudflared/00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  # Public dashboard entrypoint for the Vanguard Vite frontend.
+  - hostname: vanguard.example.com
+    service: http://localhost:5173
+
+  # Public API entrypoint for the Vanguard FastAPI backend.
+  - hostname: api.vanguard.example.com
+    service: http://localhost:8000
+
+  # Required final catch-all rule for unmatched hostnames/routes.
+  - service: http_status:404
