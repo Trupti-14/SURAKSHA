@@ -8,13 +8,31 @@ frontend/dist/
 
 # Environment files
 .env
+.env.*
 .env.local
 frontend/.env
+frontend/.env.*
 frontend/.env.local
 backend/.env
+backend/.env.*
 backend/.env.local
 
 # Logs and caches
 *.log
 __pycache__/
 *.py[cod]
+
+# Editor / AI tool files
+.vscode/
+.cursor/
+frontend/.cursor/
+
+# Vite dev logs
+vite-dev.log
+vite-dev.err.log
+frontend/vite-dev.log
+frontend/vite-dev.err.log
+
+# OS files
+.DS_Store
+Thumbs.db

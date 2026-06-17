@@ -1,0 +1,41 @@
+[
+  {
+    "circular_id": "RBI-SYN-2026-001",
+    "title": "Enhanced Monitoring of Mule Accounts",
+    "regulator": "Reserve Bank of India",
+    "issue_date": "2026-06-01",
+    "deadline": "2026-06-21",
+    "category": "Fraud Risk Monitoring",
+    "summary": "Banks must tighten detection of suspected mule accounts, add weekly branch-level review, and report high-risk account clusters to the fraud monitoring cell.",
+    "old_policy": "Mule account checks were performed during monthly AML reviews using threshold-based alerts and manual branch escalations.",
+    "new_policy": "Mule account monitoring must run daily using transaction velocity, beneficiary churn, device overlap, and rapid cash-out indicators, with weekly evidence packs retained for audit.",
+    "detected_gap": "Monthly AML review cadence does not satisfy daily mule-account surveillance, weekly branch escalation, or regulator-ready evidence retention.",
+    "text": "All regulated entities shall enhance monitoring of mule accounts and suspected fraud conduits. Daily transaction surveillance, branch-level accountability, weekly escalation logs, and regulator-ready evidence are required. Customer impact from blocked accounts must be reviewed with documented justification."
+  },
+  {
+    "circular_id": "RBI-SYN-2026-002",
+    "title": "KYC Re-verification Advisory",
+    "regulator": "Reserve Bank of India",
+    "issue_date": "2026-06-04",
+    "deadline": "2026-07-19",
+    "category": "KYC Operations",
+    "summary": "Banks should refresh KYC for stale or inconsistent customer records and preserve proof of customer notification, re-verification, and exception approvals.",
+    "old_policy": "KYC refresh was handled through periodic batch campaigns and branch-led exception handling for missing documents.",
+    "new_policy": "KYC re-verification must prioritize high-risk customers, dormant accounts, inconsistent identity fields, and accounts with recent fraud flags, with auditable notification evidence.",
+    "detected_gap": "Batch campaign controls do not show risk-first segmentation, fraud-flag routing, or complete customer notification evidence.",
+    "text": "Regulated entities are advised to complete KYC re-verification for stale customer records. Customer communication, exception notes, overdue reporting, and branch approval evidence must be retained. Service disruption and customer impact should be minimized through documented outreach."
+  },
+  {
+    "circular_id": "RBI-SYN-2026-003",
+    "title": "Digital Fraud Reporting Directive",
+    "regulator": "Reserve Bank of India",
+    "issue_date": "2026-06-07",
+    "deadline": "2026-06-17",
+    "category": "Digital Fraud Reporting",
+    "summary": "Banks must accelerate digital fraud reporting, preserve incident evidence, and submit structured updates for cyber-enabled payment fraud cases.",
+    "old_policy": "Digital fraud incidents were consolidated into daily summaries and reported after internal confirmation by operations and cyber teams.",
+    "new_policy": "Digital fraud incidents must be triaged within four hours, reported in structured format, linked to cyber telemetry, and supported by customer-impact evidence.",
+    "detected_gap": "Daily summary reporting is slower than the four-hour triage requirement and lacks structured telemetry-linked evidence.",
+    "text": "All banks shall strengthen digital fraud reporting for cyber-enabled payment incidents. Four-hour triage, structured reporting, penalty-aware breach tracking, customer impact notes, and incident evidence retention are mandatory for compliance review."
+  }
+]
