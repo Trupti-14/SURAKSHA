@@ -42,7 +42,7 @@ export default function AgentWorkflow({ activeStep = 5 }) {
         {steps.map((step, index) => {
           const completed = index < activeStep;
           const ready = index === activeStep;
-          const status = completed ? "Completed" : ready ? "Ready" : "Pending";
+          const status = completed ? "Completed" : ready ? "Ready" : "Pending Evidence";
 
           return (
             <div

@@ -24,7 +24,8 @@ export default function EvidenceUpload({ selectedAction }) {
           Evidence Upload
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Upload proof for the selected action point. Evidence will be tracked for offline compliance review.
+          Upload proof for the selected action point. Evidence will be tracked
+          for offline compliance review; no cloud vision API is used.
         </p>
       </div>
 
@@ -86,7 +87,8 @@ export default function EvidenceUpload({ selectedAction }) {
             <p className="mt-2 text-sm leading-6 text-slate-300">{result.notes}</p>
             <p className="mt-2 text-xs leading-5 text-emerald-200/80">
               Evidence file selected for compliance review. Automated verification
-              can be connected to local vision checks during advanced integration.
+              can be connected to local vision checks during advanced integration;
+              no cloud vision API is used.
             </p>
           </div>
         )}

@@ -270,7 +270,9 @@ export default function Compliance() {
               Offline Mode Active
             </div>
             <p className="max-w-xs text-xs leading-5 text-slate-500">
-              Runs in offline-first mode using approved local compliance records.
+              Runs as an offline-first compliance engine using local circular data,
+              rule-based MAP generation, and rule-based priority scoring. No
+              Gemini, OpenAI, or cloud API dependency is used.
             </p>
           </div>
         </div>
@@ -315,7 +317,7 @@ export default function Compliance() {
               Local Circulars
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Regulatory circular records available for compliance review.
+              Local RBI-style circular records available for compliance review.
             </p>
           </div>
           <div className="space-y-3 p-4">
