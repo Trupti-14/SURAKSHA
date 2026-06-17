@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from engines.behavioral.mfa import evaluate_mfa
 from engines.session_store import save_session, get_session, update_risk_score, list_active_sessions, delete_session
+from api.compliance import router as compliance_router
 
 app = FastAPI(title="Vanguard Security API", version="1.0.0")
 
@@ -12,6 +13,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(compliance_router)
 
 @app.get("/")
 def root():
