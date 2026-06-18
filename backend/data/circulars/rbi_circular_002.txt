@@ -1,0 +1,18 @@
+RBI Circular No. RBI/2026/002
+Date: June 2026
+Subject: KYC Re-verification for Dormant Accounts
+
+All banks must complete KYC re-verification for accounts dormant for 
+more than 12 months within 60 days.
+
+Banks must ensure:
+1. Customer contact within 15 days via registered mobile/email
+2. Physical KYC documents collected within 30 days
+3. Accounts not re-verified to be frozen after 60 days
+4. Audit trail maintained for all KYC activities for 5 years
+5. Monthly report to be submitted to RBI on compliance status
+
+Implementation deadline: 60 days from date of circular.
+
+Signed,
+Governor, Reserve Bank of India
