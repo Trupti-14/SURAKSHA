@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from typing import Optional
 from engines.compliance.workflow import run_compliance_workflow
 from engines.compliance.scout import scan_circulars, get_circular_by_id
 from engines.compliance.chroma_store import search_similar, store_circular
+from engines.compliance.vision import verify_evidence_from_upload
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -110,6 +111,57 @@ def analyze_circular(request: CircularRequest):
             "Offline mode: Phi-3 + keyword fallback"
         ]
     }
+
+
+@router.post("/evidence/verify")
+async def verify_evidence(
+    file: Optional[UploadFile] = File(default=None),
+    required_evidence: Optional[str] = Form(default=None),
+    action_id: Optional[str] = Form(default=None),
+):
+    del action_id  # Action context can be logged later; verification is file-based.
+
+    if file is None:
+        return verify_evidence_from_upload(
+            file_bytes=None,
+            filename=None,
+            required_evidence=required_evidence,
+        )
+
+    try:
+        file_bytes = await file.read()
+    except Exception as exc:
+        return {
+            "status": "REJECTED",
+            "tampered": False,
+            "risk_score": 100,
+            "confidence": 1,
+            "file_type": "unknown",
+            "summary": f"Evidence rejected: upload could not be read ({exc}).",
+            "findings": [
+                {
+                    "severity": "High",
+                    "page": 1,
+                    "location": "file header",
+                    "reason": "The uploaded evidence stream could not be read by the backend.",
+                    "suggested_action": "Upload the evidence file again from local storage.",
+                }
+            ],
+            "checks": {
+                "file_exists": False,
+                "allowed_type": False,
+                "metadata_consistent": False,
+                "tamper_indicators_found": False,
+                "content_matches_required_evidence": False,
+            },
+        }
+
+    return verify_evidence_from_upload(
+        file_bytes=file_bytes,
+        filename=file.filename,
+        content_type=file.content_type,
+        required_evidence=required_evidence,
+    )
 
 
 @router.get("/circulars")
