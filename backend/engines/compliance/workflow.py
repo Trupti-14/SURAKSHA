@@ -4,7 +4,7 @@ from datetime import datetime
 from .actions import extract_action_points
 from .delta import compare_policy
 from .priority import calculate_priority
-from .scout import get_circular_by_id, scan_circulars
+from .scout import get_circular_by_id, parse_circular_text, scan_circulars
 
 try:
     from .chroma_store import search_similar, store_circular
@@ -12,13 +12,6 @@ except Exception:
     search_similar = None
     store_circular = None
 
-
-BASELINE_POLICY = """
-MFA required for customer authentication.
-Fraud monitoring enabled for suspicious transactions.
-KYC refresh and AML review are handled by compliance operations.
-Audit logs and regulatory reporting are retained for review.
-"""
 
 WORKFLOW_STAGES = [
     "Scout Parser",
@@ -215,10 +208,24 @@ def _normalize_action_points(action_result, obligations, content):
             {
                 "id": action_id,
                 "action": action_text,
+                "owner": point.get("owner") if isinstance(point, dict) else f"{department} Lead",
                 "department": department or _department_for_action(action_text),
+                "deadline": point.get("deadline") if isinstance(point, dict) else None,
                 "deadline_days": deadline_days,
-                "evidence_required": _evidence_required(action_text),
-                "status": "Backend Draft",
+                "evidence_required": (
+                    point.get("evidence_required")
+                    if isinstance(point, dict) and point.get("evidence_required")
+                    else _evidence_required(action_text)
+                ),
+                "status": point.get("status", "Pending Review") if isinstance(point, dict) else "Pending Review",
+                "reason": point.get("reason") if isinstance(point, dict) else "Generated from compliance workflow.",
+                "linked_gap_id": point.get("linked_gap_id") if isinstance(point, dict) else None,
+                "source_obligation": point.get("source_obligation") if isinstance(point, dict) else action_text,
+                "acceptance_criteria": (
+                    point.get("acceptance_criteria")
+                    if isinstance(point, dict) and point.get("acceptance_criteria")
+                    else ["Compliance Office review and evidence verification completed."]
+                ),
             }
         )
 
@@ -248,6 +255,9 @@ def _normalize_key_changes(key_changes):
 
 
 def _build_policy_gaps(content, delta_result, obligations):
+    if isinstance(delta_result.get("policy_gaps"), list) and delta_result.get("policy_gaps"):
+        return delta_result["policy_gaps"][:8]
+
     lower_content = content.lower()
     gaps = []
 
@@ -420,24 +430,59 @@ def run_compliance_workflow(
     if not input_text:
         return _empty_report(engine_notes)
 
-    obligations = _parse_obligations(input_text)
+    try:
+        scout_result = parse_circular_text(input_text, file_name=file_name)
+        engine_notes.extend(scout_result.get("engine_notes", []))
+    except Exception as exc:
+        scout_result = {
+            "obligations": _parse_obligations(input_text),
+            "risk_keywords": [],
+            "affected_departments": ["Compliance Office"],
+            "evidence_required": ["Manual compliance review record"],
+            "normalized_summary": "Scout fallback used after parser failure.",
+        }
+        engine_notes.append(f"Scout Parser failed safely: {exc}.")
+
+    obligations = scout_result.get("obligations") or []
     if obligations:
         engine_notes.append(f"Scout Parser extracted {len(obligations)} obligation candidate(s).")
     else:
         engine_notes.append("Scout Parser found no explicit obligations; MAP fallback may be limited.")
 
+    prior_documents = []
+    for local_circular in local_circulars:
+        local_id = local_circular.get("id")
+        if not local_id or local_id == circular_id:
+            continue
+        try:
+            circular = get_circular_by_id(local_id)
+            if circular and circular.get("content"):
+                prior_documents.append(
+                    {
+                        "id": local_id,
+                        "content": circular["content"],
+                        "source": "local_regulatory_memory",
+                    }
+                )
+        except Exception as exc:
+            engine_notes.append(f"Prior circular {local_id} could not be loaded for Delta: {exc}.")
+
     try:
-        delta_result = compare_policy(BASELINE_POLICY, input_text) or {}
-        if delta_result.get("analysis_by") == "keyword":
-            engine_notes.append("Semantic Delta Agent used keyword fallback because Phi-3 was unavailable or non-JSON.")
-        else:
-            engine_notes.append("Semantic Delta Agent returned structured local model output.")
+        delta_result = compare_policy(
+            old_policy=None,
+            new_policy=input_text,
+            scout_result=scout_result,
+            prior_documents=prior_documents,
+        ) or {}
+        engine_notes.extend(delta_result.get("engine_notes", []))
+        engine_notes.append("Semantic Delta Agent returned deterministic structured policy gaps.")
     except Exception as exc:
         delta_result = {
             "gap_found": bool(obligations),
             "summary": "Delta comparison fallback used after agent failure.",
             "risk_level": "MEDIUM",
             "key_changes": [],
+            "policy_gaps": [],
             "analysis_by": "fallback",
         }
         engine_notes.append(f"Semantic Delta Agent failed safely: {exc}.")
@@ -446,7 +491,12 @@ def run_compliance_workflow(
     policy_gaps = _build_policy_gaps(input_text, delta_result, obligations)
 
     try:
-        action_result = extract_action_points(input_text) or {}
+        action_result = extract_action_points(
+            input_text,
+            scout_result=scout_result,
+            delta_result={**delta_result, "policy_gaps": policy_gaps},
+        ) or {}
+        engine_notes.extend(action_result.get("engine_notes", []))
         if not action_result.get("action_points"):
             engine_notes.append("MAP Generator returned no structured actions; obligation fallback used if available.")
     except Exception as exc:
@@ -471,6 +521,9 @@ def run_compliance_workflow(
         ]
         engine_notes.append(f"Priority Calculator failed safely: {exc}.")
     completed_stages.add("Priority Calculator")
+
+    for index, action in enumerate(prioritized_actions, start=1):
+        action["id"] = f"MAP-{index:03d}"
 
     priority = _overall_priority(prioritized_actions)
     similar_circulars = _safe_chroma(input_text, file_name, mode, engine_notes)
