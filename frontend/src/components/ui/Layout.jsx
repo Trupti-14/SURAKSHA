@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { getRiskProfile } from "../../lib/store.js";
 
 function formatTime(date) {
@@ -44,11 +44,36 @@ function NavIcon({ label }) {
   );
 }
 
+const routeHeaders = {
+  "/dashboard": {
+    title: "Core Trust Dashboard",
+    subtitle: "Session-wise identity risk, MFA posture, and behavioral triggers",
+  },
+  "/forensics": {
+    title: "Document Forensics",
+    subtitle: "Digital document authenticity, ELA heatmap, and metadata analysis",
+  },
+  "/compliance": {
+    title: "Regulatory Compliance Command Center",
+    subtitle: "Offline RBI circular tracking, MAP generation, and evidence verification",
+  },
+  "/admin": {
+    title: "Security & Administration",
+    subtitle: "Panic PIN, quorum control, and privacy redaction operations",
+  },
+};
+
 export default function Layout({ children, selectedSession }) {
+  const { pathname } = useLocation();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const riskProfile = selectedSession
     ? getRiskProfile(selectedSession.riskScore)
     : getRiskProfile(0);
+  const routeKey =
+    Object.keys(routeHeaders).find(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    ) ?? "/dashboard";
+  const header = routeHeaders[routeKey];
 
   const navItems = [
     { label: "Trust Dashboard", path: "/dashboard" },
@@ -125,11 +150,9 @@ export default function Layout({ children, selectedSession }) {
         <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 bg-[#091527]/95 px-5 py-3.5 backdrop-blur">
           <div>
             <h1 className="text-base font-semibold tracking-wide text-slate-50">
-              Core Trust Dashboard
+              {header.title}
             </h1>
-            <p className="text-xs text-slate-500">
-              Session-wise identity risk, MFA posture, and behavioral triggers
-            </p>
+            <p className="text-xs text-slate-500">{header.subtitle}</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
