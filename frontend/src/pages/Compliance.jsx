@@ -3,6 +3,7 @@ import AgentWorkflow from "../components/compliance/AgentWorkflow.jsx";
 import CircularCompare from "../components/compliance/CircularCompare.jsx";
 import EvidenceUpload from "../components/compliance/EvidenceUpload.jsx";
 import Layout from "../components/ui/Layout.jsx";
+import { analyzeComplianceCircular } from "../lib/compliance-api.js";
 
 const fallbackCirculars = [
   {
@@ -183,6 +184,109 @@ function priorityTone(label) {
   return "bg-sky-500/[0.12] text-sky-300 ring-sky-500/25";
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getReadableItem(item, candidates = []) {
+  if (typeof item === "string") {
+    return item;
+  }
+
+  if (!item || typeof item !== "object") {
+    return "No detail provided.";
+  }
+
+  const readableKey = candidates.find(
+    (key) => typeof item[key] === "string" && item[key].trim().length > 0,
+  );
+
+  if (readableKey) {
+    return item[readableKey];
+  }
+
+  return Object.entries(item)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number")
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("; ");
+}
+
+function normalizeActionPoint(item, index, circular, priority) {
+  if (typeof item === "string") {
+    return {
+      id: `API-MAP-${circular.circular_id}-${index + 1}`,
+      circular_id: circular.circular_id,
+      action: item,
+      owner: "Compliance Operations",
+      deadline: circular.deadline ?? "To be assigned",
+      priority_score: priority.priority_score ?? circular.priority_score,
+      priority_label: priority.priority_label ?? circular.priority_label,
+      evidence_required: "Compliance evidence pack to be defined by owner",
+      status: "Backend Draft",
+      reason: "Generated from backend compliance analysis.",
+    };
+  }
+
+  const action = item ?? {};
+
+  return {
+    id:
+      action.id ??
+      action.map_id ??
+      action.action_id ??
+      `API-MAP-${circular.circular_id}-${index + 1}`,
+    circular_id: circular.circular_id,
+    action:
+      action.action ??
+      action.action_point ??
+      action.description ??
+      action.title ??
+      "Review generated compliance action point",
+    owner: action.owner ?? action.assigned_to ?? action.department ?? "Compliance Operations",
+    deadline: action.deadline ?? action.due_date ?? circular.deadline ?? "To be assigned",
+    priority_score:
+      action.priority_score ?? priority.priority_score ?? circular.priority_score,
+    priority_label:
+      action.priority_label ?? priority.priority_label ?? circular.priority_label,
+    evidence_required:
+      action.evidence_required ??
+      action.evidence ??
+      action.proof_required ??
+      "Compliance evidence pack to be defined by owner",
+    status: action.status ?? "Backend Draft",
+    reason:
+      action.reason ??
+      action.priority_reason ??
+      "Generated from backend compliance analysis.",
+  };
+}
+
+function AnalysisList({ title, items, candidates, emptyText }) {
+  const safeItems = asArray(items);
+
+  return (
+    <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </p>
+      {safeItems.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {safeItems.map((item, index) => (
+            <li
+              key={`${title}-${index}`}
+              className="rounded-md border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-sm leading-6 text-slate-300"
+            >
+              {getReadableItem(item, candidates)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm leading-6 text-slate-500">{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
 export default function Compliance() {
   const [circulars, setCirculars] = useState(fallbackCirculars);
   const [actions, setActions] = useState(fallbackActions);
@@ -190,6 +294,12 @@ export default function Compliance() {
     fallbackCirculars[0].circular_id,
   );
   const [selectedActionId, setSelectedActionId] = useState(fallbackActions[0].id);
+  const [analysisResultsByCircularId, setAnalysisResultsByCircularId] = useState({});
+  const [analysisState, setAnalysisState] = useState({
+    status: "idle",
+    circularId: "",
+    error: "",
+  });
 
   useEffect(() => {
     let alive = true;
@@ -228,7 +338,40 @@ export default function Compliance() {
     circulars.find((circular) => circular.circular_id === selectedCircularId) ??
     circulars[0];
 
-  const circularActions = useMemo(
+  const selectedAnalysis = selectedCircular
+    ? analysisResultsByCircularId[selectedCircular.circular_id]
+    : null;
+
+  const displayedCircular = useMemo(() => {
+    if (!selectedCircular) {
+      return null;
+    }
+
+    const priority = selectedAnalysis?.priority ?? {};
+    const policyGaps = asArray(selectedAnalysis?.policy_gaps);
+    const detectedGap =
+      policyGaps.length > 0
+        ? getReadableItem(policyGaps[0], [
+            "detected_gap",
+            "gap",
+            "description",
+            "summary",
+            "requirement",
+          ])
+        : selectedCircular.detected_gap;
+
+    return {
+      ...selectedCircular,
+      summary: selectedAnalysis?.summary ?? selectedCircular.summary,
+      detected_gap: detectedGap,
+      priority_score: priority.priority_score ?? selectedCircular.priority_score,
+      priority_label: priority.priority_label ?? selectedCircular.priority_label,
+      priority_reason:
+        priority.priority_reason ?? selectedCircular.priority_reason,
+    };
+  }, [selectedAnalysis, selectedCircular]);
+
+  const localCircularActions = useMemo(
     () =>
       actions.filter(
         (action) => action.circular_id === selectedCircular?.circular_id,
@@ -236,8 +379,24 @@ export default function Compliance() {
     [actions, selectedCircular],
   );
 
+  const backendActions = useMemo(
+    () =>
+      asArray(selectedAnalysis?.measurable_action_points).map((action, index) =>
+        normalizeActionPoint(
+          action,
+          index,
+          displayedCircular ?? selectedCircular,
+          selectedAnalysis?.priority ?? {},
+        ),
+      ),
+    [displayedCircular, selectedAnalysis, selectedCircular],
+  );
+
+  const circularActions =
+    backendActions.length > 0 ? backendActions : localCircularActions;
+
   const selectedAction =
-    actions.find((action) => action.id === selectedActionId) ??
+    circularActions.find((action) => action.id === selectedActionId) ??
     circularActions[0] ??
     actions[0];
 
@@ -246,6 +405,59 @@ export default function Compliance() {
   ).length;
   const dueSoonCount = actions.filter((action) => action.status === "In Progress").length;
   const verifiedCount = actions.filter((action) => action.status === "Verified").length;
+
+  const selectedAnalysisState =
+    analysisState.circularId === selectedCircular?.circular_id
+      ? analysisState
+      : {
+          status: selectedAnalysis ? "success" : "idle",
+          circularId: selectedCircular?.circular_id ?? "",
+          error: "",
+        };
+
+  const isAnalyzing = selectedAnalysisState.status === "loading";
+
+  async function handleAnalyzeCircular() {
+    if (!selectedCircular) {
+      return;
+    }
+
+    const circularId = selectedCircular.circular_id;
+    setAnalysisState({ status: "loading", circularId, error: "" });
+
+    const result = await analyzeComplianceCircular({
+      circularText: selectedCircular.text ?? selectedCircular.summary ?? "",
+      fileName: `${circularId}.txt`,
+      mode: "offline",
+    });
+
+    if (result?.ok === false) {
+      setAnalysisState({
+        status: "error",
+        circularId,
+        error:
+          result.error ??
+          "Compliance analysis backend is unavailable. Local fallback data remains active.",
+      });
+      return;
+    }
+
+    setAnalysisResultsByCircularId((currentResults) => ({
+      ...currentResults,
+      [circularId]: result,
+    }));
+
+    const nextBackendActions = asArray(result?.measurable_action_points).map(
+      (action, index) =>
+        normalizeActionPoint(action, index, selectedCircular, result?.priority ?? {}),
+    );
+
+    if (nextBackendActions.length > 0) {
+      setSelectedActionId(nextBackendActions[0].id);
+    }
+
+    setAnalysisState({ status: "success", circularId, error: "" });
+  }
 
   return (
     <Layout>
@@ -371,23 +583,61 @@ export default function Compliance() {
                   {selectedCircular.regulator} - Issued {selectedCircular.issue_date}
                 </p>
               </div>
-              <span
-                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
-                  selectedCircular.priority_label,
-                )}`}
-              >
-                {selectedCircular.priority_label} Priority
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleAnalyzeCircular}
+                  disabled={isAnalyzing}
+                  className="rounded-lg border border-sky-400/30 bg-sky-500/[0.12] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-sky-200 transition hover:border-sky-300/60 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+                >
+                  {isAnalyzing
+                    ? "Analyzing..."
+                    : selectedAnalysis
+                      ? "Re-analyze Circular"
+                      : "Analyze Circular"}
+                </button>
+                <span
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
+                    displayedCircular.priority_label,
+                  )}`}
+                >
+                  {displayedCircular.priority_label} Priority
+                </span>
+              </div>
             </div>
           </div>
 
           <div className="grid gap-4 p-4 lg:grid-cols-3">
+            {selectedAnalysisState.status !== "idle" && (
+              <div className="lg:col-span-3">
+                {selectedAnalysisState.status === "loading" && (
+                  <div className="rounded-lg border border-sky-400/25 bg-sky-500/[0.08] px-4 py-3 text-sm font-medium text-sky-200">
+                    Analyzing selected circular through the offline compliance backend...
+                  </div>
+                )}
+                {selectedAnalysisState.status === "error" && (
+                  <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.08] px-4 py-3">
+                    <p className="text-sm font-semibold text-amber-200">
+                      Backend analysis unavailable
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      {selectedAnalysisState.error} Existing local fallback data remains visible.
+                    </p>
+                  </div>
+                )}
+                {selectedAnalysisState.status === "success" && selectedAnalysis && (
+                  <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-200">
+                    Backend compliance analysis loaded for this circular.
+                  </div>
+                )}
+              </div>
+            )}
             <div className="lg:col-span-2">
               <p className="text-sm leading-6 text-slate-300">
-                {selectedCircular.summary}
+                {displayedCircular.summary}
               </p>
               <p className="mt-3 text-xs leading-5 text-slate-500">
-                Priority reason: {selectedCircular.priority_reason}
+                Priority reason: {displayedCircular.priority_reason}
               </p>
             </div>
             <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
@@ -407,7 +657,7 @@ export default function Compliance() {
                 Detected Gap
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-200">
-                {selectedCircular.detected_gap}
+                {displayedCircular.detected_gap}
               </p>
             </div>
           </div>
@@ -464,11 +714,11 @@ export default function Compliance() {
                   <td className="px-5 py-4">
                     <span
                       className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
-                        action.priority_label ?? selectedCircular.priority_label,
+                        action.priority_label ?? displayedCircular.priority_label,
                       )}`}
                     >
-                      {action.priority_label ?? selectedCircular.priority_label}{" "}
-                      {action.priority_score ?? selectedCircular.priority_score}/10
+                      {action.priority_label ?? displayedCircular.priority_label}{" "}
+                      {action.priority_score ?? displayedCircular.priority_score}/10
                     </span>
                   </td>
                   <td className="px-5 py-4 text-xs leading-5 text-slate-400">
@@ -489,10 +739,50 @@ export default function Compliance() {
         </div>
       </section>
 
-      <AgentWorkflow activeStep={4} />
+      <AgentWorkflow activeStep={selectedAnalysis ? 5 : 4} />
+
+      {selectedAnalysis && (
+        <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
+          <div className="border-b border-slate-800/80 px-5 py-4">
+            <h2 className="text-base font-semibold tracking-wide text-slate-50">
+              Backend Analysis Output
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Response fields returned by the local compliance analysis endpoint.
+            </p>
+          </div>
+
+          <div className="grid gap-4 p-4 lg:grid-cols-2">
+            <AnalysisList
+              title="Obligations"
+              items={selectedAnalysis.obligations}
+              candidates={["obligation", "requirement", "description", "summary"]}
+              emptyText="No obligations returned by backend."
+            />
+            <AnalysisList
+              title="Policy Gaps"
+              items={selectedAnalysis.policy_gaps}
+              candidates={["gap", "detected_gap", "description", "summary"]}
+              emptyText="No policy gaps returned by backend."
+            />
+            <AnalysisList
+              title="Workflow"
+              items={selectedAnalysis.workflow}
+              candidates={["step", "name", "task", "description", "status"]}
+              emptyText="No workflow steps returned by backend."
+            />
+            <AnalysisList
+              title="Engine Notes"
+              items={selectedAnalysis.engine_notes}
+              candidates={["note", "message", "description", "summary"]}
+              emptyText="No engine notes returned by backend."
+            />
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-3.5 xl:grid-cols-2">
-        <CircularCompare circular={selectedCircular} />
+        <CircularCompare circular={displayedCircular} />
         <EvidenceUpload selectedAction={selectedAction} />
       </section>
     </Layout>
