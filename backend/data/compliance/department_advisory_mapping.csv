@@ -1,0 +1,31 @@
+business_vertical,sub_vertical,scope,primary_regulators,specific_advisory_regulation,official_link
+Digital Banking Services,Internet Banking (IB),Retail and corporate internet banking portals,RBI,Master Direction on Digital Payment Security Controls,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12032
+Digital Banking Services,Mobile Banking (MB),Mobile banking apps and services,RBI,Master Direction on Mobile Banking Transactions,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12611
+Digital Banking Services,Digital Lending,Digital loan origination and servicing,RBI,Guidelines on Digital Lending,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12348
+Digital Banking Services,API Banking / Open Banking,Open APIs and fintech integrations,RBI,IT Governance Risk Controls and Assurance Practices,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+Cybersecurity Wing,Security Operations Center (SOC),Threat monitoring and incident response,RBI CERT-In,Cyber Security Framework for Banks,https://www.rbi.org.in/commonperson/English/Scripts/Notification.aspx?Id=1721
+Cybersecurity Wing,Vulnerability Management,Scanning and remediation,CERT-In,CERT-In Directions 2022,https://www.cert-in.org.in/PDF/CERT-In_Directions_70B_28.04.2022.pdf
+Cybersecurity Wing,Identity & Access Management,Authentication and privileged access,RBI,IT Governance Risk Controls and Assurance Practices,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+Cybersecurity Wing,Security Architecture,Secure design and enterprise controls,RBI,Cyber Resilience and Digital Operational Resilience Framework Draft,https://www.rbi.org.in/Scripts/PublicationReportDetails.aspx?UrlPage=&ID=1232
+IT Vertical,Infrastructure Management,Servers storage and network services,RBI,IT Governance Risk Controls and Assurance Practices,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+IT Vertical,Cloud Operations,Cloud services and hosting,RBI,Master Direction on Outsourcing of IT Services,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12486
+IT Vertical,Application Management,Core banking and enterprise applications,RBI,Master Direction on IT Governance,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+IT Vertical,Business Continuity & Disaster Recovery,Resilience and recovery operations,RBI,Business Continuity Planning Guidelines,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=11725
+Procurement & Vendor Management,IT Procurement,Technology sourcing and contracts,RBI,Outsourcing of IT Services Directions,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12486
+Procurement & Vendor Management,Third-Party Risk Management,Vendor due diligence and oversight,RBI,Outsourcing of IT Services Directions,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12486
+Procurement & Vendor Management,Cloud Vendor Management,Cloud provider governance,RBI,Outsourcing of IT Services Directions,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12486
+Credit Card Vertical,Card Issuance,Card onboarding and activation,RBI,Master Direction Credit and Debit Card Issuance and Conduct,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12300
+Credit Card Vertical,Card Operations,Transaction processing and billing,RBI,Master Direction Credit and Debit Card Issuance and Conduct,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12300
+Credit Card Vertical,Dispute & Chargeback Management,Disputes and reversals,RBI,Ombudsman Scheme for Digital Transactions,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=11901
+Payments Vertical,UPI,UPI transactions and merchant payments,NPCI,UPI Procedural Guidelines,https://www.npci.org.in/what-we-do/upi/product-overview
+Payments Vertical,NEFT,Electronic fund transfers,RBI,NEFT System Directions,https://www.rbi.org.in/Scripts/FAQView.aspx?Id=60
+Payments Vertical,RTGS,Real-time gross settlement,RBI,RTGS System Regulations,https://www.rbi.org.in/Scripts/FAQView.aspx?Id=65
+Payments Vertical,Merchant Acquiring,Merchant onboarding and acceptance,RBI,Digital Payment Security Controls,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12032
+Compliance Department,Regulatory Compliance,Compliance monitoring and reporting,RBI,Master Direction Know Your Customer KYC,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=11566
+Compliance Department,AML/CFT,Anti-money laundering and sanctions,FIU-IND,AML/CFT Guidelines,https://fiuindia.gov.in/notifications.html
+Legal Department,Contract Management,Vendor and customer contracts,RBI,Outsourcing of IT Services Directions,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12486
+Legal Department,Privacy & Data Protection,Data privacy and consent management,MeitY,Digital Personal Data Protection Act and Rules,https://www.meity.gov.in/divisions/cyber-law-security-and-e-governance
+Risk Management,Operational Risk,Operational risk assessment,RBI,Guidance Note on Management of Operational Risk,https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12652
+Risk Management,Technology Risk,Technology and cyber risk,RBI,IT Governance Risk Controls and Assurance Practices,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+Internal Audit,Information Systems Audit,IT and cybersecurity audits,RBI,Information Systems Audit Framework,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+Internal Audit,Regulatory Audit,Compliance assurance and testing,RBI,Master Direction Know Your Customer KYC,https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=11566

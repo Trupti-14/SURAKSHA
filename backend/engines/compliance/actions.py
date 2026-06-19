@@ -1,5 +1,6 @@
 import re
 
+from .advisory_mapping import match_department_advisory
 from .scout import parse_circular_text
 
 
@@ -105,6 +106,63 @@ def _owner_for_department(department):
     return f"{department} Lead"
 
 
+def _fallback_advisory(department, text):
+    lower = (text or "").lower()
+    if "customer" in lower or "notify" in lower:
+        business_vertical = "Customer Support / Grievance Cell"
+        sub_vertical = "Customer Notification"
+        reference = "Internal customer protection and grievance workflow"
+    elif "branch" in lower:
+        business_vertical = "Branch Operations"
+        sub_vertical = "Branch Compliance"
+        reference = "Internal branch escalation and compliance workflow"
+    else:
+        business_vertical = department or "Compliance Department"
+        sub_vertical = "Regulatory Compliance"
+        reference = "Internal compliance assignment fallback"
+
+    return {
+        "business_vertical": business_vertical,
+        "sub_vertical": sub_vertical,
+        "primary_regulator": "RBI",
+        "regulatory_reference": reference,
+        "official_link": "",
+        "match_score": 0,
+        "assignment_basis": "No strong bank advisory row matched; deterministic fallback used from department rules.",
+    }
+
+
+def _advisory_from_gap_or_match(gap, text, scout_result, department):
+    if gap and gap.get("business_vertical") and gap.get("sub_vertical"):
+        return {
+            "business_vertical": gap.get("business_vertical"),
+            "sub_vertical": gap.get("sub_vertical"),
+            "primary_regulator": gap.get("primary_regulator", "RBI"),
+            "regulatory_reference": gap.get("regulatory_reference", "Mapped regulatory advisory"),
+            "official_link": gap.get("official_link", ""),
+            "match_score": gap.get("match_score", 0),
+            "assignment_basis": gap.get("assignment_basis", "Mapped from Delta policy gap advisory assignment."),
+        }
+
+    matches = match_department_advisory(
+        text,
+        obligations=[text],
+        risk_keywords=scout_result.get("risk_keywords", []) if scout_result else [],
+        category=scout_result.get("category") if scout_result else None,
+        limit=1,
+    )
+    if matches and matches[0].get("match_score", 0) > 1:
+        return matches[0]
+
+    return _fallback_advisory(department, text)
+
+
+def _department_from_advisory(advisory, fallback_department):
+    if advisory and advisory.get("match_score", 0) > 1:
+        return f"{advisory['business_vertical']} / {advisory['sub_vertical']}"
+    return fallback_department or "Compliance Office"
+
+
 def _evidence_for_text(text, fallback=None):
     lower = (text or "").lower()
     evidence = []
@@ -179,11 +237,13 @@ def _acceptance_criteria(action, evidence_required, deadline):
     ]
 
 
-def _map_from_gap(gap, index):
+def _map_from_gap(gap, index, scout_result=None):
     new_requirement = _normalize_space(gap.get("new_requirement") or gap.get("policy_gap") or gap.get("gap"))
     deadline = gap.get("deadline") or _deadline_text(new_requirement)
     deadline_days = _deadline_days(deadline)
-    department = gap.get("affected_department") or _department_for_text(new_requirement)
+    fallback_department = gap.get("affected_department") or _department_for_text(new_requirement)
+    advisory = _advisory_from_gap_or_match(gap, new_requirement, scout_result, fallback_department)
+    department = _department_from_advisory(advisory, fallback_department)
     evidence_required = gap.get("evidence_required") or _evidence_for_text(new_requirement)
     action = _action_template(new_requirement, gap.get("change_type"))
     priority_score, priority_label = _priority(deadline_days, new_requirement, gap.get("severity"))
@@ -203,13 +263,21 @@ def _map_from_gap(gap, index):
         "linked_gap_id": gap.get("id"),
         "source_obligation": new_requirement,
         "acceptance_criteria": _acceptance_criteria(action, evidence_required, deadline),
+        "business_vertical": advisory["business_vertical"],
+        "sub_vertical": advisory["sub_vertical"],
+        "primary_regulator": advisory["primary_regulator"],
+        "regulatory_reference": advisory["regulatory_reference"],
+        "official_link": advisory["official_link"],
+        "assignment_basis": advisory["assignment_basis"],
     }
 
 
 def _map_from_obligation(obligation, index, scout_result):
     deadline = _deadline_text(obligation, scout_result.get("deadline"))
     deadline_days = _deadline_days(deadline)
-    department = _department_for_text(obligation)
+    fallback_department = _department_for_text(obligation)
+    advisory = _advisory_from_gap_or_match(None, obligation, scout_result, fallback_department)
+    department = _department_from_advisory(advisory, fallback_department)
     evidence_required = _evidence_for_text(obligation)
     action = _action_template(obligation)
     priority_score, priority_label = _priority(deadline_days, obligation)
@@ -229,6 +297,12 @@ def _map_from_obligation(obligation, index, scout_result):
         "linked_gap_id": None,
         "source_obligation": obligation,
         "acceptance_criteria": _acceptance_criteria(action, evidence_required, deadline),
+        "business_vertical": advisory["business_vertical"],
+        "sub_vertical": advisory["sub_vertical"],
+        "primary_regulator": advisory["primary_regulator"],
+        "regulatory_reference": advisory["regulatory_reference"],
+        "official_link": advisory["official_link"],
+        "assignment_basis": advisory["assignment_basis"],
     }
 
 
@@ -249,7 +323,7 @@ def extract_action_points(content=None, scout_result=None, delta_result=None):
         if len(action_points) >= 7:
             break
         if isinstance(gap, dict):
-            action_points.append(_map_from_gap(gap, len(action_points) + 1))
+            action_points.append(_map_from_gap(gap, len(action_points) + 1, scout))
 
     for obligation in obligations:
         if len(action_points) >= 7:

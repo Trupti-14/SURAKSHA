@@ -1,5 +1,6 @@
 import re
 
+from .advisory_mapping import match_department_advisory
 from .scout import parse_circular_text
 
 
@@ -41,6 +42,18 @@ EVIDENCE_BY_DOMAIN = {
     "authentication": "Authentication control configuration screenshot and test evidence",
 }
 
+RISK_KEYWORDS_BY_DOMAIN = {
+    "fraud": ["digital fraud", "fraud"],
+    "customer": ["customer protection"],
+    "evidence": ["evidence retention", "audit"],
+    "reporting": ["reporting"],
+    "branch": ["branch compliance"],
+    "kyc": ["KYC", "AML"],
+    "cyber": ["cyber incident"],
+    "privacy": ["DPDP/data privacy"],
+    "authentication": ["cyber incident"],
+}
+
 
 def _normalize_space(value):
     return re.sub(r"\s+", " ", value or "").strip()
@@ -79,12 +92,12 @@ def _domain_for_obligation(obligation):
         return "evidence"
     if any(term in lower for term in ("notify", "customer notification", "affected customer", "grievance")):
         return "customer"
-    if any(term in lower for term in ("branch", "branch-level", "escalation", "escalate")):
-        return "branch"
     if any(term in lower for term in ("kyc", "aml", "verification", "suspicious transaction")):
         return "kyc"
-    if any(term in lower for term in ("cyber", "security log", "digital evidence", "incident")):
+    if any(term in lower for term in ("cert-in", "cyber", "security log", "digital evidence", "incident")):
         return "cyber"
+    if any(term in lower for term in ("branch", "branch-level", "escalation", "escalate")):
+        return "branch"
     if any(term in lower for term in ("submit", "monthly", "quarterly", "rbi", "regulatory report")):
         return "reporting"
     if any(term in lower for term in ("fraud", "mule", "payment fraud", "digital fraud")):
@@ -342,6 +355,50 @@ def _evidence_for_gap(domain, obligation):
     return EVIDENCE_BY_DOMAIN.get(domain, "Compliance evidence pack and owner sign-off")
 
 
+def _fallback_advisory(department, obligation):
+    lower = (obligation or "").lower()
+    if "customer" in lower or "notify" in lower:
+        business_vertical = "Customer Support / Grievance Cell"
+        sub_vertical = "Customer Notification"
+        reference = "Internal customer protection and grievance workflow"
+    elif "branch" in lower:
+        business_vertical = "Branch Operations"
+        sub_vertical = "Branch Compliance"
+        reference = "Internal branch escalation and compliance workflow"
+    else:
+        business_vertical = department or "Compliance Department"
+        sub_vertical = "Regulatory Compliance"
+        reference = "Internal compliance assignment fallback"
+
+    return {
+        "business_vertical": business_vertical,
+        "sub_vertical": sub_vertical,
+        "scope": "Mapped through deterministic department fallback",
+        "primary_regulator": "RBI",
+        "regulatory_reference": reference,
+        "official_link": "",
+        "match_score": 0,
+        "assignment_basis": "No strong bank advisory row matched; deterministic fallback used from obligation/domain mapping.",
+    }
+
+
+def _advisory_for_gap(obligation, domain, scout, department):
+    if domain == "customer":
+        return _fallback_advisory(department, obligation)
+
+    matches = match_department_advisory(
+        obligation,
+        obligations=[obligation],
+        risk_keywords=RISK_KEYWORDS_BY_DOMAIN.get(domain, []),
+        category=scout.get("category"),
+        limit=1,
+    )
+    if matches and matches[0].get("match_score", 0) >= 20:
+        return matches[0]
+
+    return _fallback_advisory(department, obligation)
+
+
 def _basis(change_type, old_requirement, new_requirement):
     if old_requirement == NO_PRIOR_POLICY:
         return "No relevant old RBI circular or internal policy was found in available regulatory memory."
@@ -385,6 +442,8 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
         deadline = _primary_deadline(obligation)
         old_deadline = _primary_deadline(old_requirement) if old_requirement != NO_PRIOR_POLICY else None
         gap_text = _gap_message(change_type, old_requirement, obligation, domain)
+        department = _department_for_gap(domain, obligation)
+        advisory = _advisory_for_gap(obligation, domain, scout, department)
         key = (gap_text.lower(), obligation.lower())
         if key in seen:
             continue
@@ -399,12 +458,19 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "severity": _severity(domain, change_type, deadline, old_deadline),
                 "old_requirement": old_requirement,
                 "new_requirement": obligation,
-                "affected_department": _department_for_gap(domain, obligation),
+                "affected_department": department,
                 "deadline": deadline,
                 "evidence_required": _evidence_for_gap(domain, obligation),
                 "confidence": _confidence(change_type, source_document),
                 "source": source_document["id"] if source_document else "No matching prior policy found",
                 "change_type": change_type,
+                "business_vertical": advisory["business_vertical"],
+                "sub_vertical": advisory["sub_vertical"],
+                "primary_regulator": advisory["primary_regulator"],
+                "regulatory_reference": advisory["regulatory_reference"],
+                "official_link": advisory["official_link"],
+                "match_score": advisory.get("match_score", 0),
+                "assignment_basis": advisory["assignment_basis"],
             }
         )
 
@@ -412,6 +478,13 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
             break
 
     if not gaps:
+        fallback_obligation = obligations[0] if obligations else content[:180]
+        fallback_advisory = _advisory_for_gap(
+            fallback_obligation,
+            _domain_for_obligation(fallback_obligation),
+            scout,
+            "Compliance Office",
+        )
         gaps.append(
             {
                 "id": "GAP-001",
@@ -420,13 +493,20 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "basis": "Scout obligations were compared with available regulatory memory and no strong delta was detected.",
                 "severity": "Low",
                 "old_requirement": "Relevant prior policy appears broadly aligned.",
-                "new_requirement": obligations[0] if obligations else content[:180],
+                "new_requirement": fallback_obligation,
                 "affected_department": "Compliance Office",
                 "deadline": scout.get("deadline"),
                 "evidence_required": "Compliance review note and owner sign-off",
                 "confidence": 0.62,
                 "source": "deterministic_delta",
                 "change_type": "manual_review",
+                "business_vertical": fallback_advisory["business_vertical"],
+                "sub_vertical": fallback_advisory["sub_vertical"],
+                "primary_regulator": fallback_advisory["primary_regulator"],
+                "regulatory_reference": fallback_advisory["regulatory_reference"],
+                "official_link": fallback_advisory["official_link"],
+                "match_score": fallback_advisory.get("match_score", 0),
+                "assignment_basis": fallback_advisory["assignment_basis"],
             }
         )
 

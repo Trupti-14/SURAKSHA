@@ -226,6 +226,12 @@ def _normalize_action_points(action_result, obligations, content):
                     if isinstance(point, dict) and point.get("acceptance_criteria")
                     else ["Compliance Office review and evidence verification completed."]
                 ),
+                "business_vertical": point.get("business_vertical") if isinstance(point, dict) else None,
+                "sub_vertical": point.get("sub_vertical") if isinstance(point, dict) else None,
+                "primary_regulator": point.get("primary_regulator") if isinstance(point, dict) else None,
+                "regulatory_reference": point.get("regulatory_reference") if isinstance(point, dict) else None,
+                "official_link": point.get("official_link") if isinstance(point, dict) else None,
+                "assignment_basis": point.get("assignment_basis") if isinstance(point, dict) else None,
             }
         )
 

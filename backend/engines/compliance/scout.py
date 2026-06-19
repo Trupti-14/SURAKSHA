@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from .advisory_mapping import match_department_advisory
+
 
 CIRCULARS_DIR = Path(__file__).resolve().parents[2] / "data" / "circulars"
 
@@ -342,6 +344,13 @@ def parse_circular_text(circular_text=None, file_name=None):
     if not cleaned_text or len(cleaned_text) < 20:
         engine_notes.append("Input circular text was empty or too short; safe fallback metadata returned.")
         fallback_title = Path(file_name or "uploaded circular").stem.replace("_", " ").title()
+        fallback_advisories = match_department_advisory(
+            cleaned_text,
+            obligations=[],
+            risk_keywords=[],
+            category="General Regulatory Compliance",
+            limit=1,
+        )
         return {
             "title": fallback_title,
             "circular_id": _extract_circular_id(cleaned_text, file_name),
@@ -354,6 +363,7 @@ def parse_circular_text(circular_text=None, file_name=None):
             "risk_keywords": [],
             "evidence_required": ["Manual compliance review record"],
             "affected_departments": ["Compliance Office"],
+            "mapped_advisories": fallback_advisories,
             "normalized_summary": "Circular text was empty or too short for reliable extraction.",
             "raw_text_excerpt": cleaned_text[:500],
             "engine_notes": engine_notes,
@@ -367,6 +377,19 @@ def parse_circular_text(circular_text=None, file_name=None):
     evidence = _detect_evidence(cleaned_text, obligations)
     title = _extract_title(text, file_name)
     primary_deadline = deadlines[0] if deadlines else None
+    mapped_advisories = match_department_advisory(
+        cleaned_text,
+        obligations=obligations,
+        risk_keywords=risk_keywords,
+        category=category,
+        limit=5,
+    )
+    mapped_departments = [
+        f"{advisory['business_vertical']} / {advisory['sub_vertical']}"
+        for advisory in mapped_advisories
+        if advisory.get("match_score", 0) > 1
+    ]
+    affected_departments = mapped_departments or departments
 
     if not obligations:
         engine_notes.append("No explicit obligation phrase was found; downstream agents should use manual-review fallback.")
@@ -382,8 +405,9 @@ def parse_circular_text(circular_text=None, file_name=None):
         "obligations": obligations,
         "risk_keywords": risk_keywords,
         "evidence_required": evidence,
-        "affected_departments": departments,
-        "normalized_summary": _build_summary(title, category, obligations, departments, primary_deadline),
+        "affected_departments": affected_departments,
+        "mapped_advisories": mapped_advisories,
+        "normalized_summary": _build_summary(title, category, obligations, affected_departments, primary_deadline),
         "raw_text_excerpt": cleaned_text[:500],
         "engine_notes": engine_notes,
     }
