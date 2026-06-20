@@ -3,7 +3,11 @@ import AgentWorkflow from "../components/compliance/AgentWorkflow.jsx";
 import CircularCompare from "../components/compliance/CircularCompare.jsx";
 import EvidenceUpload from "../components/compliance/EvidenceUpload.jsx";
 import Layout from "../components/ui/Layout.jsx";
-import { analyzeComplianceCircular } from "../lib/compliance-api.js";
+import {
+  analyzeComplianceCircular,
+  fetchComplianceActions,
+  fetchComplianceCirculars,
+} from "../lib/compliance-api.js";
 
 const fallbackCirculars = [
   {
@@ -261,6 +265,60 @@ function normalizeActionPoint(item, index, circular, priority) {
   };
 }
 
+function normalizeCircularItem(item, index) {
+  return {
+    circular_id: item.circular_id ?? item.id ?? `API-CIRCULAR-${index + 1}`,
+    title: item.title ?? item.id ?? `Compliance Circular ${index + 1}`,
+    regulator: item.regulator ?? item.primary_regulator ?? "Reserve Bank of India",
+    issue_date: item.issue_date ?? "Local",
+    deadline: item.deadline ?? "To be assessed",
+    category: item.category ?? "Regulatory Compliance",
+    summary:
+      item.summary ??
+      item.normalized_summary ??
+      "Local circular available for compliance review.",
+    old_policy:
+      item.old_policy ?? "Existing policy baseline will be assessed during analysis.",
+    new_policy:
+      item.new_policy ??
+      item.summary ??
+      "Run analysis to extract circular requirements.",
+    detected_gap: item.detected_gap ?? "Run analysis to generate policy gaps.",
+    text: item.text ?? item.content ?? item.summary ?? "",
+    priority_score: item.priority_score ?? 5,
+    priority_label: item.priority_label ?? "Medium",
+    priority_reason:
+      item.priority_reason ?? "Priority is assigned after compliance analysis.",
+    source: item.source ?? "backend",
+    status: item.status ?? "available",
+  };
+}
+
+function normalizeActionTemplate(item, index, circularId) {
+  return {
+    id: item.id ?? `API-MAP-${index + 1}`,
+    circular_id: item.circular_id ?? circularId,
+    action: item.action ?? "Review compliance action point",
+    owner: item.owner ?? item.department ?? "Compliance Office",
+    department: item.department ?? "Compliance Office",
+    deadline: item.deadline ?? "To be assigned",
+    priority_score: item.priority_score ?? 5,
+    priority_label: item.priority_label ?? "Medium",
+    evidence_required:
+      item.evidence_required ?? "Compliance evidence pack and owner sign-off",
+    status: item.status ?? "Pending Review",
+    reason: item.reason ?? "Loaded from backend compliance action template.",
+    business_vertical: item.business_vertical,
+    sub_vertical: item.sub_vertical,
+    linked_gap_id: item.linked_gap_id,
+    source_obligation: item.source_obligation,
+    acceptance_criteria: item.acceptance_criteria,
+    regulatory_reference: item.regulatory_reference,
+    official_link: item.official_link,
+    assignment_basis: item.assignment_basis,
+  };
+}
+
 function AnalysisList({ title, items, candidates, emptyText }) {
   const safeItems = asArray(items);
 
@@ -306,21 +364,30 @@ export default function Compliance() {
 
     async function loadComplianceData() {
       try {
-        const [circularResponse, actionResponse] = await Promise.all([
-          fetch("/api/compliance/circulars"),
-          fetch("/api/compliance/actions"),
+        const [circularPayload, actionPayload] = await Promise.all([
+          fetchComplianceCirculars(),
+          fetchComplianceActions(),
         ]);
 
-        if (!circularResponse.ok || !actionResponse.ok) {
+        if (circularPayload?.ok === false || actionPayload?.ok === false) {
           return;
         }
 
-        const circularPayload = await circularResponse.json();
-        const actionPayload = await actionResponse.json();
-
         if (alive) {
-          setCirculars(circularPayload.circulars ?? fallbackCirculars);
-          setActions(actionPayload.actions ?? fallbackActions);
+          const normalizedCirculars = asArray(
+            circularPayload.items ?? circularPayload.circulars,
+          ).map(normalizeCircularItem);
+          const nextCirculars =
+            normalizedCirculars.length > 0 ? normalizedCirculars : fallbackCirculars;
+          const firstCircularId = nextCirculars[0]?.circular_id;
+          const normalizedActions = asArray(
+            actionPayload.items ?? actionPayload.actions,
+          ).map((action, index) =>
+            normalizeActionTemplate(action, index, firstCircularId),
+          );
+
+          setCirculars(nextCirculars);
+          setActions(normalizedActions.length > 0 ? normalizedActions : fallbackActions);
         }
       } catch {
         // Offline-first demo path: keep local synthetic data when no backend is running.
