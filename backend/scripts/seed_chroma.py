@@ -9,6 +9,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from engines.compliance.chroma_store import (  # noqa: E402
     FALLBACK_MEMORY_PATH,
+    clear_store,
     list_stored_circulars,
     store_circular,
     store_status,
@@ -68,6 +69,7 @@ def seed() -> dict:
     seeded_count = 0
     skipped_count = 0
     results = []
+    clear_result = clear_store()
 
     for path in CIRCULAR_FILES:
         if not path.exists():
@@ -110,6 +112,7 @@ def seed() -> dict:
         "collection_count": status["collection_count"],
         "fallback_count": status["fallback_count"],
         "stored_count": len(list_stored_circulars()),
+        "clear_status": clear_result.get("status"),
         "results": results,
     }
     return summary

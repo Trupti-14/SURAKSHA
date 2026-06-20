@@ -7,10 +7,9 @@ from .priority import calculate_priority
 from .scout import get_circular_by_id, parse_circular_text, scan_circulars
 
 try:
-    from .chroma_store import search_similar, store_circular
+    from .chroma_store import search_similar
 except Exception:
     search_similar = None
-    store_circular = None
 
 
 WORKFLOW_STAGES = [
@@ -358,7 +357,7 @@ def _safe_chroma(content, file_name, mode, engine_notes):
     if not content:
         return similar_circulars
 
-    if search_similar is None or store_circular is None:
+    if search_similar is None:
         engine_notes.append("ChromaDB functions are unavailable; similar-circular lookup skipped.")
         return similar_circulars
 
@@ -374,19 +373,6 @@ def _safe_chroma(content, file_name, mode, engine_notes):
         ]
     except Exception as exc:
         engine_notes.append(f"ChromaDB similar-circular lookup failed safely: {exc}.")
-
-    try:
-        store_result = store_circular(
-            file_name or "uploaded_circular",
-            content,
-            {"file_name": file_name or "unknown", "mode": mode or "offline"},
-        )
-        if isinstance(store_result, dict) and store_result.get("status") in {"skipped", "error"}:
-            engine_notes.append(
-                f"ChromaDB storage skipped safely: {store_result.get('reason', 'unavailable')}."
-            )
-    except Exception as exc:
-        engine_notes.append(f"ChromaDB storage failed safely: {exc}.")
 
     return similar_circulars
 

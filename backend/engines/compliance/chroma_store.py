@@ -77,7 +77,7 @@ def _write_fallback_memory(records: list[dict[str, Any]]) -> None:
     _ensure_dirs()
     payload = {
         "offline_mode": True,
-        "updated_at": _utc_now(),
+        "updated_at": "local_seed",
         "count": len(records),
         "items": records,
     }
@@ -118,7 +118,7 @@ def _fallback_record(circular_id: str, content: str, metadata: dict[str, Any] | 
         "metadata": metadata,
         "embedding": embed_text(content or "", dimensions=EMBEDDING_DIMENSIONS),
         "source": metadata.get("source", "local_seed"),
-        "updated_at": _utc_now(),
+        "updated_at": metadata.get("stored_at") or metadata.get("issue_date") or "local_seed",
     }
 
 
@@ -216,7 +216,7 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
     metadata = metadata or {}
     metadata.setdefault("circular_id", circular_id)
     metadata.setdefault("source", "local_seed")
-    metadata.setdefault("stored_at", _utc_now())
+    metadata.setdefault("stored_at", metadata.get("issue_date") or "local_seed")
     record = _fallback_record(circular_id, content or "", metadata)
 
     _upsert_fallback_record(record)
