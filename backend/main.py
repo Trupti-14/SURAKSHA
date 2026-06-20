@@ -1,5 +1,13 @@
+import sys
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from engines.behavioral.mfa import evaluate_mfa
 from engines.session_store import save_session, get_session, update_risk_score, list_active_sessions, delete_session
 from api.compliance import router as compliance_router
