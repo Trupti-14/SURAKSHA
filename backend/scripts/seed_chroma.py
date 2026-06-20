@@ -21,6 +21,7 @@ CIRCULAR_FILES = [
     CIRCULAR_DIR / "rbi_circular_001.txt",
     CIRCULAR_DIR / "rbi_circular_002.txt",
     CIRCULAR_DIR / "rbi_circular_003.txt",
+    CIRCULAR_DIR / "rbi_it_outsourcing_master_direction_2023.txt",
 ]
 
 
@@ -41,6 +42,8 @@ def _parse_circular_file(path: Path) -> dict:
                 "issue_date",
                 "regulator",
                 "effective_from",
+                "status",
+                "source_type",
             }:
                 metadata[normalized_key] = value.strip()
                 continue

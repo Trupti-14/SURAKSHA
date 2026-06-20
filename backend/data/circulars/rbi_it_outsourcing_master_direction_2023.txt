@@ -1,0 +1,38 @@
+circular_id: RBI-REF-2023-IT-OUTSOURCING
+title: Master Direction on Outsourcing of Information Technology Services
+category: IT Outsourcing / Third-Party Risk / Cloud / SOC
+issue_date: 2023-04-10
+regulator: Reserve Bank of India
+effective_from: 2023-10-01
+status: Archived / Bank-provided public reference
+source_type: Public regulatory reference
+
+This bank-provided public reference summarizes the Reserve Bank of India Master Direction on Outsourcing of Information Technology Services for use as an approved policy reference in offline compliance analysis.
+
+Regulated entities shall maintain a Board-approved IT outsourcing policy covering governance, accountability, risk assessment, due diligence, contracting, monitoring, business continuity, data protection, audit, reporting, and exit management for outsourced IT services.
+
+The Board and Senior Management shall retain ultimate responsibility for outsourced IT activities and shall ensure that outsourcing arrangements do not reduce the regulated entity's obligations to customers or regulators. The IT Function, Risk Management, Compliance Department, Legal Department, Business Verticals, Procurement and Vendor Management, Cybersecurity Wing, and Internal Audit shall have documented roles for implementation and oversight.
+
+Regulated entities must maintain a central inventory of outsourced IT services. The inventory shall include service provider name, service scope, business owner, technology owner, data handled, customer impact level, criticality rating, contract expiry date, subcontractor dependency, concentration risk, and exit dependency.
+
+Before entering or renewing material IT outsourcing arrangements, regulated entities shall perform service provider due diligence covering financial soundness, operational capability, cyber security controls, data protection controls, legal risk, reputational risk, concentration risk, subcontractor dependency, business continuity readiness, and ability to comply with regulatory requirements.
+
+Every material IT outsourcing agreement must be legally binding and must include service standards, roles and responsibilities, data confidentiality, customer data protection, access to records, audit rights, RBI inspection access, incident reporting obligations, subcontractor approval controls, business continuity requirements, termination rights, exit strategy, data portability, secure deletion, and transition support.
+
+Regulated entities shall monitor and control outsourced activities through service level reporting, risk reviews, incident records, contract reviews, audit observations, closure tracking, and periodic reporting to Senior Management. Outsourcing arrangements shall be subject to a risk management framework, including concentration risk assessment and ongoing control testing.
+
+Service providers must report cyber incidents and material service disruptions without undue delay so that the regulated entity can meet applicable regulatory reporting timelines. Incident response processes shall integrate service provider escalation, evidence preservation, containment actions, and senior management reporting.
+
+Regulated entities shall ensure subcontractor controls, including prior approval, risk assessment, confidentiality obligations, data location controls, audit access, service continuity, and accountability for subcontracted activities.
+
+Regulated entities shall test business continuity and disaster recovery arrangements for material outsourced IT services at least annually. Evidence of BCP and DRP testing, gaps observed, corrective actions, recovery objectives, cyber resilience testing, and management approvals shall be retained for audit review.
+
+Cross-border outsourcing shall include country risk assessment, data access controls, regulatory access assurance, customer confidentiality safeguards, legal enforceability, incident reporting arrangements, and exit or transition options.
+
+For cloud service providers, regulated entities shall ensure cloud governance, data classification, access control, privileged access monitoring, encryption, logging, monitoring, disaster recovery, cyber resilience, data portability, secure deletion during exit, and control over customer or confidential information.
+
+For outsourced Security Operations Centre services, regulated entities shall maintain oversight over alert rules, log sources, logs, metadata, escalation workflows, incident response integration, SOC effectiveness reviews, evidence retention, and periodic review of managed security service performance.
+
+Regulated entities shall conduct periodic audits of service providers and maintain evidence of audit reports, risk reviews, SLA monitoring, incident records, contract reviews, access reviews, management sign-offs, and closure of observations. RBI and the regulated entity must retain inspection and audit access to outsourced IT arrangements.
+
+Regulated entities must maintain an exit strategy and transition plan for material outsourced IT services, including continuity arrangements, data return, secure deletion, replacement provider readiness, transition responsibilities, and management approval.

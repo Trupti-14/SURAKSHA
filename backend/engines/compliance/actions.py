@@ -5,6 +5,12 @@ from .scout import parse_circular_text
 
 
 DEPARTMENT_RULES = (
+    ("IT Vertical", ("central inventory", "inventory shall include", "outsourced it services", "it outsourcing", "application maintenance", "data centre", "network services", "technology owner", "cloud governance")),
+    ("Procurement & Vendor Management", ("service provider", "vendor", "third-party", "due diligence", "subcontractor", "cloud provider", "concentration risk")),
+    ("Legal Department", ("outsourcing agreement", "legally binding", "contract", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
+    ("Risk Management", ("risk assessment", "risk management", "technology risk", "operational risk", "business continuity", "disaster recovery", "resilience")),
+    ("Cybersecurity Wing", ("security operations centre", "security operations center", "outsourced soc", "soc", "alert rules", "metadata", "incident response integration")),
+    ("Compliance Department", ("board-approved it outsourcing policy", "outsourcing policy", "regulatory reporting", "closure report", "senior management")),
     ("Fraud Risk Department", ("fraud", "mule account", "mule", "digital fraud", "payment fraud", "reporting")),
     ("Cybersecurity / IT Security", ("cyber", "security log", "digital evidence", "incident", "authentication")),
     ("KYC / AML Compliance", ("kyc", "aml", "verification", "suspicious account", "dormant")),
@@ -19,8 +25,18 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("Board-approved outsourcing policy and management approval/sign-off", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
+    ("BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
+    ("Outsourcing inventory export with provider, owner, criticality, data, contract expiry, and exit dependency fields", ("central inventory", "inventory shall include", "inventory of outsourced it", "outsourced it services")),
+    ("Signed outsourcing agreement clause checklist with audit rights, RBI inspection access, termination rights, and exit strategy evidence", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
+    ("Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion", ("cloud", "data portability", "secure deletion", "cloud governance")),
+    ("SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
+    ("SLA monitoring report, service review minutes, and closure evidence", ("service standards", "sla monitoring", "sla", "service level")),
+    ("Exit strategy and transition plan with management approval/sign-off", ("exit strategy", "termination rights", "transition plan")),
+    ("Audit report, risk review, contract review, closure evidence, and management sign-off", ("audit report", "periodic audits", "audit review", "contract reviews", "closure of observations", "management approvals")),
+    ("Service provider due diligence checklist, risk assessment approval, concentration risk note, and subcontractor review", ("due diligence", "service provider", "third-party", "subcontractor")),
     ("Fraud incident register, reporting timestamp, customer impact note, and evidence reference", ("fraud", "digital fraud", "payment fraud", "mule")),
-    ("Customer notification proof, delivery timestamp, and exception approval log", ("customer", "notify", "notification", "grievance")),
+    ("Customer notification proof, delivery timestamp, and exception approval log", ("notify", "customer notification", "affected customer", "grievance", "complaint")),
     ("Evidence archive inventory, retention proof, and audit trail export", ("retain", "preserve", "evidence", "audit trail", "archive")),
     ("Monthly report sample, maker-checker approval, and Compliance Office submission proof", ("monthly", "report", "submit")),
     ("Branch escalation register, owner sign-off, and closure timestamp", ("branch", "escalate", "branch-level")),
@@ -43,6 +59,36 @@ def _dedupe_action_points(action_points):
             deduped.append(action_point)
             seen.add(key)
     return deduped
+
+
+def _prioritize_action_points(action_points):
+    required_verticals = (
+        "IT Vertical",
+        "Procurement & Vendor Management",
+        "Legal Department",
+        "Risk Management",
+        "Cybersecurity Wing",
+        "Internal Audit",
+        "Compliance Department",
+    )
+    selected = []
+    selected_ids = set()
+
+    for vertical in required_verticals:
+        for action_point in action_points:
+            if id(action_point) in selected_ids:
+                continue
+            if action_point.get("business_vertical") == vertical:
+                selected.append(action_point)
+                selected_ids.add(id(action_point))
+                break
+
+    for action_point in action_points:
+        if id(action_point) not in selected_ids:
+            selected.append(action_point)
+            selected_ids.add(id(action_point))
+
+    return selected
 
 
 def _deadline_text(text, fallback=None):
@@ -108,7 +154,7 @@ def _owner_for_department(department):
 
 def _fallback_advisory(department, text):
     lower = (text or "").lower()
-    if "customer" in lower or "notify" in lower:
+    if "customer notification" in lower or "affected customer" in lower or "notify" in lower:
         business_vertical = "Customer Support / Grievance Cell"
         sub_vertical = "Customer Notification"
         reference = "Internal customer protection and grievance workflow"
@@ -132,6 +178,72 @@ def _fallback_advisory(department, text):
     }
 
 
+def _fixed_it_advisory_for_text(text):
+    lower = (text or "").lower()
+    row = None
+
+    if any(term in lower for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")) and "due diligence" not in lower:
+        row = {
+            "business_vertical": "Risk Management",
+            "sub_vertical": "Operational Risk",
+            "scope": "BCP/DR testing and resilience oversight",
+        }
+    elif any(term in lower for term in ("audit reports", "periodic audits", "audit review", "sla monitoring", "closure of observations")):
+        row = {
+            "business_vertical": "Internal Audit",
+            "sub_vertical": "Information Systems Audit",
+            "scope": "Audit reports, SLA monitoring, and closure review",
+        }
+    elif any(term in lower for term in ("security operations centre", "security operations center", "outsourced soc", "soc", "alert rules", "incident response integration", "cyber incidents")):
+        row = {
+            "business_vertical": "Cybersecurity Wing",
+            "sub_vertical": "Security Operations Center (SOC)",
+            "scope": "SOC oversight and third-party cyber incident escalation",
+        }
+    elif any(term in lower for term in ("due diligence", "service provider", "third-party", "subcontractor")):
+        row = {
+            "business_vertical": "Procurement & Vendor Management",
+            "sub_vertical": "Third-Party Risk Management",
+            "scope": "Service provider due diligence and third-party risk review",
+        }
+    elif any(term in lower for term in ("outsourcing agreement", "audit rights", "rbi inspection", "termination rights", "exit strategy")):
+        row = {
+            "business_vertical": "Legal Department",
+            "sub_vertical": "Contract Management",
+            "scope": "Outsourcing agreement clauses and exit controls",
+        }
+    elif any(term in lower for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+        row = {
+            "business_vertical": "IT Vertical",
+            "sub_vertical": "Cloud Operations",
+            "scope": "Cloud governance and secure exit controls",
+        }
+    elif any(term in lower for term in ("central inventory", "inventory shall include", "outsourced it services")):
+        row = {
+            "business_vertical": "IT Vertical",
+            "sub_vertical": "Infrastructure Management",
+            "scope": "Central inventory of outsourced IT services",
+        }
+    elif any(term in lower for term in ("outsourcing policy", "board-approved", "senior management")):
+        row = {
+            "business_vertical": "Compliance Department",
+            "sub_vertical": "Regulatory Compliance",
+            "scope": "IT outsourcing governance and policy ownership",
+        }
+
+    if not row:
+        return None
+
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Master Direction on Outsourcing of Information Technology Services",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": "Deterministic IT outsourcing obligation mapping.",
+    }
+
+
 def _advisory_from_gap_or_match(gap, text, scout_result, department):
     if gap and gap.get("business_vertical") and gap.get("sub_vertical"):
         return {
@@ -143,6 +255,10 @@ def _advisory_from_gap_or_match(gap, text, scout_result, department):
             "match_score": gap.get("match_score", 0),
             "assignment_basis": gap.get("assignment_basis", "Mapped from Delta policy gap advisory assignment."),
         }
+
+    fixed_advisory = _fixed_it_advisory_for_text(text)
+    if fixed_advisory:
+        return fixed_advisory
 
     matches = match_department_advisory(
         text,
@@ -187,7 +303,7 @@ def _priority(deadline_days, text, severity=None):
     elif deadline_days <= 30:
         score = 6
 
-    if any(term in lower for term in ("fraud", "cyber", "mule", "customer", "kyc", "aml")):
+    if any(term in lower for term in ("fraud", "cyber", "mule", "customer", "kyc", "aml", "outsourcing", "cloud", "service provider", "soc")):
         score = min(10, score + 1)
     if severity == "Critical":
         score = max(score, 9)
@@ -207,6 +323,26 @@ def _priority(deadline_days, text, severity=None):
 
 def _action_template(text, change_type=None):
     lower = (text or "").lower()
+    if "central inventory" in lower or "inventory shall include" in lower or "inventory of outsourced" in lower:
+        return "Create and maintain the central outsourced IT services inventory with owner, provider, criticality, data, contract, and exit fields."
+    if "board-approved it outsourcing policy" in lower or "outsourcing policy" in lower:
+        return "Update the Board-approved IT outsourcing policy and responsibility matrix for all accountable functions."
+    if "outsourcing agreement" in lower or "audit rights" in lower or "rbi inspection" in lower:
+        return "Update the outsourcing agreement clause checklist for audit rights, RBI inspection access, incident reporting, termination rights, and exit strategy."
+    if "cloud" in lower or "data portability" in lower or "secure deletion" in lower:
+        return "Implement the cloud governance checklist for access control, logging, monitoring, DR, data portability, and secure deletion."
+    if "security operations centre" in lower or "security operations center" in lower or "soc" in lower or "alert rules" in lower:
+        return "Document outsourced SOC oversight with alert rule review, log coverage, escalation workflow, and incident response integration."
+    if "cyber incidents" in lower and ("third-party" in lower or "service provider" in lower or "escalat" in lower):
+        return "Define third-party cyber incident escalation workflow and integrate it with incident response reporting timelines."
+    if "due diligence" in lower or "service provider" in lower or "third-party" in lower:
+        return "Complete service provider due diligence and technology risk approval before entering or renewing the outsourcing arrangement."
+    if "business continuity" in lower or "disaster recovery" in lower or "bcp" in lower or "drp" in lower:
+        return "Run and document BCP/DR testing for material outsourced IT services with corrective action tracking."
+    if "exit strategy" in lower or "transition plan" in lower:
+        return "Prepare the exit strategy and transition plan for material outsourced IT services."
+    if "periodic audits" in lower or "audit reports" in lower or "audit review" in lower or "sla monitoring" in lower:
+        return "Collect service provider audit reports, SLA monitoring results, risk reviews, and closure evidence."
     if "monthly" in lower and ("report" in lower or "submit" in lower):
         return "Submit monthly monitoring report with maker-checker approval and Compliance Office sign-off."
     if "fraud" in lower and ("4 hours" in lower or "report" in lower):
@@ -320,20 +456,20 @@ def extract_action_points(content=None, scout_result=None, delta_result=None):
 
     action_points = []
     for gap in gaps:
-        if len(action_points) >= 7:
+        if len(action_points) >= 24:
             break
         if isinstance(gap, dict):
             action_points.append(_map_from_gap(gap, len(action_points) + 1, scout))
 
     for obligation in obligations:
-        if len(action_points) >= 7:
+        if len(action_points) >= 24:
             break
         action_points.append(_map_from_obligation(obligation, len(action_points) + 1, scout))
 
-    action_points = _dedupe_action_points(action_points)
+    action_points = _prioritize_action_points(_dedupe_action_points(action_points))
 
-    if len(action_points) > 7:
-        action_points = action_points[:7]
+    if len(action_points) > 24:
+        action_points = action_points[:24]
 
     if not action_points and text:
         fallback_gap = {

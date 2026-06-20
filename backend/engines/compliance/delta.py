@@ -7,6 +7,14 @@ from .scout import parse_circular_text
 NO_PRIOR_POLICY = "No matching prior policy found."
 
 DOMAIN_TERMS = {
+    "it_inventory": ("central inventory", "outsourced it services", "service provider name", "technology owner", "criticality rating", "exit dependency"),
+    "it_policy": ("board-approved", "it outsourcing policy", "senior management", "it function", "compliance department"),
+    "vendor_due_diligence": ("service provider", "due diligence", "third-party", "subcontractor", "concentration risk", "vendor"),
+    "outsourcing_contract": ("outsourcing agreement", "legally binding", "contract", "audit rights", "rbi inspection", "termination rights", "exit strategy"),
+    "cloud": ("cloud", "cloud service provider", "data portability", "secure deletion", "cloud governance", "encryption"),
+    "soc": ("security operations centre", "security operations center", "outsourced soc", "alert rules", "logs", "metadata", "incident response integration"),
+    "bcp_drp": ("business continuity", "disaster recovery", "bcp", "drp", "resilience testing", "recovery objectives"),
+    "it_audit": ("audit reports", "audit rights", "sla monitoring", "risk reviews", "closure of observations", "evidence retention"),
     "fraud": ("fraud", "digital fraud", "payment fraud", "mule", "suspicious"),
     "customer": ("customer", "notify", "notification", "grievance", "complaint"),
     "evidence": ("evidence", "retain", "preserve", "archive", "audit trail", "audit"),
@@ -19,6 +27,14 @@ DOMAIN_TERMS = {
 }
 
 DEPARTMENT_BY_DOMAIN = {
+    "it_inventory": "IT Vertical",
+    "it_policy": "Compliance Department + Risk Management + IT Vertical",
+    "vendor_due_diligence": "Procurement & Vendor Management",
+    "outsourcing_contract": "Legal Department + Procurement & Vendor Management",
+    "cloud": "IT Vertical + Procurement & Vendor Management",
+    "soc": "Cybersecurity Wing",
+    "bcp_drp": "IT Vertical + Risk Management",
+    "it_audit": "Internal Audit",
     "fraud": "Fraud Risk Department",
     "customer": "Customer Support / Grievance Cell",
     "evidence": "Internal Audit",
@@ -31,6 +47,14 @@ DEPARTMENT_BY_DOMAIN = {
 }
 
 EVIDENCE_BY_DOMAIN = {
+    "it_inventory": "Outsourcing inventory export with provider, owner, criticality, data, contract expiry, and exit dependency fields",
+    "it_policy": "Board-approved outsourcing policy, role matrix, risk assessment approval, and management approval/sign-off",
+    "vendor_due_diligence": "Service provider due diligence checklist, risk assessment approval, concentration risk note, and subcontractor review",
+    "outsourcing_contract": "Signed outsourcing agreement clause checklist with audit rights, RBI inspection access, termination rights, and exit strategy evidence",
+    "cloud": "Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion",
+    "soc": "SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof",
+    "bcp_drp": "BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval",
+    "it_audit": "Audit report, SLA monitoring report, risk review, contract review, closure evidence, and management sign-off",
     "fraud": "Fraud incident register, detection timestamp, reporting timestamp, customer impact note, and evidence reference",
     "customer": "Customer notification proof, timestamp, delivery status, and exception approval",
     "evidence": "Evidence retention register, archive proof, and audit trail export",
@@ -43,6 +67,14 @@ EVIDENCE_BY_DOMAIN = {
 }
 
 RISK_KEYWORDS_BY_DOMAIN = {
+    "it_inventory": ["IT outsourcing", "third-party risk"],
+    "it_policy": ["IT outsourcing", "third-party risk"],
+    "vendor_due_diligence": ["third-party risk", "IT outsourcing"],
+    "outsourcing_contract": ["IT outsourcing", "third-party risk"],
+    "cloud": ["cloud outsourcing", "IT outsourcing"],
+    "soc": ["SOC outsourcing", "cyber incident"],
+    "bcp_drp": ["business continuity", "operational risk"],
+    "it_audit": ["audit", "IT outsourcing"],
     "fraud": ["digital fraud", "fraud"],
     "customer": ["customer protection"],
     "evidence": ["evidence retention", "audit"],
@@ -88,6 +120,22 @@ def _domains_for_text(text):
 
 def _domain_for_obligation(obligation):
     lower = (obligation or "").lower()
+    if any(term in lower for term in ("central inventory", "inventory of all outsourced", "outsourced it services", "inventory shall include")):
+        return "it_inventory"
+    if any(term in lower for term in ("board-approved it outsourcing policy", "outsourcing policy", "board", "senior management", "it function")):
+        return "it_policy"
+    if any(term in lower for term in ("outsourcing agreement", "agreement must include", "contract", "audit rights", "rbi inspection", "termination rights", "exit strategy")):
+        return "outsourcing_contract"
+    if any(term in lower for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+        return "cloud"
+    if any(term in lower for term in ("security operations centre", "security operations center", "outsourced soc", "soc", "alert rules", "incident response integration", "cyber incidents")):
+        return "soc"
+    if any(term in lower for term in ("audit reports", "periodic audits", "audit review", "sla monitoring", "contract reviews", "closure of observations")):
+        return "it_audit"
+    if any(term in lower for term in ("due diligence", "service provider", "third-party", "subcontractor", "concentration risk")):
+        return "vendor_due_diligence"
+    if any(term in lower for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")):
+        return "bcp_drp"
     if any(term in lower for term in ("retain", "preserve", "evidence", "audit trail", "audit", "archive")):
         return "evidence"
     if any(term in lower for term in ("notify", "customer notification", "affected customer", "grievance")):
@@ -169,8 +217,10 @@ def _severity(domain, change_type, new_deadline=None, old_deadline=None):
             return "Critical"
         if old_minutes is not None and new_minutes < old_minutes:
             return "High"
-    if domain in {"fraud", "cyber"}:
+    if domain in {"fraud", "cyber", "soc", "cloud", "vendor_due_diligence", "outsourcing_contract"}:
         return "Critical" if change_type in {"missing_policy", "deadline_changed"} else "High"
+    if domain in {"it_inventory", "it_policy", "bcp_drp", "it_audit"}:
+        return "High" if change_type in {"missing_policy", "new_obligation"} else "Medium"
     if domain in {"customer", "kyc", "privacy"}:
         return "High"
     if domain in {"evidence", "reporting", "branch"}:
@@ -345,14 +395,74 @@ def _department_for_gap(domain, obligation):
         return "Fraud Risk Department + Compliance Office"
     if domain == "evidence" and any(term in lower for term in ("cyber", "digital evidence", "security log")):
         return "Cybersecurity / IT Security + Internal Audit"
+    if domain == "it_inventory" and any(term in lower for term in ("compliance report", "closure report", "reporting")):
+        return "Compliance Department + IT Vertical"
     return DEPARTMENT_BY_DOMAIN.get(domain, "Compliance Office")
 
 
 def _evidence_for_gap(domain, obligation):
     lower = (obligation or "").lower()
+    if "customer notification" in lower or "affected customer" in lower or "notify" in lower:
+        return "Customer notification proof, timestamp, delivery status, and exception approval"
     if domain == "reporting" and any(term in lower for term in ("monthly", "report", "submit")):
         return "Monthly monitoring report, maker-checker approval, and Compliance Office submission proof"
     return EVIDENCE_BY_DOMAIN.get(domain, "Compliance evidence pack and owner sign-off")
+
+
+def _fixed_it_advisory(domain):
+    fixed_rows = {
+        "it_inventory": {
+            "business_vertical": "IT Vertical",
+            "sub_vertical": "Infrastructure Management",
+            "scope": "Central inventory of outsourced IT services",
+        },
+        "it_policy": {
+            "business_vertical": "Compliance Department",
+            "sub_vertical": "Regulatory Compliance",
+            "scope": "Board-approved IT outsourcing policy and governance reporting",
+        },
+        "vendor_due_diligence": {
+            "business_vertical": "Procurement & Vendor Management",
+            "sub_vertical": "Third-Party Risk Management",
+            "scope": "Service provider due diligence and outsourcing risk review",
+        },
+        "outsourcing_contract": {
+            "business_vertical": "Legal Department",
+            "sub_vertical": "Contract Management",
+            "scope": "Outsourcing agreement clauses, audit rights, termination, and exit",
+        },
+        "cloud": {
+            "business_vertical": "IT Vertical",
+            "sub_vertical": "Cloud Operations",
+            "scope": "Cloud governance, resilience, logging, portability, and secure deletion",
+        },
+        "soc": {
+            "business_vertical": "Cybersecurity Wing",
+            "sub_vertical": "Security Operations Center (SOC)",
+            "scope": "Outsourced SOC oversight, alert rules, logs, and escalation",
+        },
+        "bcp_drp": {
+            "business_vertical": "Risk Management",
+            "sub_vertical": "Operational Risk",
+            "scope": "BCP/DR testing for material outsourced IT services",
+        },
+        "it_audit": {
+            "business_vertical": "Internal Audit",
+            "sub_vertical": "Information Systems Audit",
+            "scope": "Service provider audit reports, SLA monitoring, and closure review",
+        },
+    }
+    row = fixed_rows.get(domain)
+    if not row:
+        return None
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Master Direction on Outsourcing of Information Technology Services",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": f"Deterministic IT outsourcing domain mapping: {domain}.",
+    }
 
 
 def _fallback_advisory(department, obligation):
@@ -385,6 +495,10 @@ def _fallback_advisory(department, obligation):
 def _advisory_for_gap(obligation, domain, scout, department):
     if domain == "customer":
         return _fallback_advisory(department, obligation)
+
+    fixed_advisory = _fixed_it_advisory(domain)
+    if fixed_advisory:
+        return fixed_advisory
 
     matches = match_department_advisory(
         obligation,
@@ -474,7 +588,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
             }
         )
 
-        if len(gaps) >= 8:
+        if len(gaps) >= 12:
             break
 
     if not gaps:

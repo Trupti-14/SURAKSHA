@@ -49,7 +49,21 @@ OBLIGATION_VERBS = (
     "assign",
     "complete",
     "ensure",
+    "conduct",
+    "perform",
+    "test",
 )
+
+METADATA_KEYS = {
+    "circular_id",
+    "title",
+    "category",
+    "issue_date",
+    "regulator",
+    "effective_from",
+    "status",
+    "source_type",
+}
 
 DEADLINE_PATTERNS = (
     r"within\s+\d{1,3}\s+(?:hours?|days?|months?|years?)",
@@ -72,6 +86,11 @@ DATE_PATTERNS = (
 )
 
 RISK_RULES = (
+    ("IT outsourcing", ("it outsourcing", "outsourced it", "outsourcing arrangement", "outsourcing agreement")),
+    ("third-party risk", ("third-party", "service provider", "vendor", "due diligence", "subcontractor")),
+    ("cloud outsourcing", ("cloud", "cloud service provider", "data portability", "secure deletion")),
+    ("SOC outsourcing", ("security operations centre", "security operations center", "outsourced soc", "soc effectiveness")),
+    ("business continuity", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
     ("digital fraud", ("digital fraud", "payment fraud", "cyber-enabled fraud")),
     ("fraud", ("fraud", "fraudulent")),
     ("mule account", ("mule account", "mule")),
@@ -91,6 +110,7 @@ RISK_RULES = (
 )
 
 CATEGORY_RULES = (
+    ("IT Outsourcing / Third-Party Risk", ("it outsourcing", "outsourced it", "service provider", "third-party", "outsourcing agreement", "cloud service provider", "security operations centre", "security operations center")),
     ("Digital Fraud Reporting", ("digital fraud", "payment fraud", "fraud reporting")),
     ("Mule Account Monitoring", ("mule account", "mule", "suspicious account")),
     ("KYC / AML Compliance", ("kyc", "aml", "suspicious transaction", "dormant")),
@@ -102,6 +122,12 @@ CATEGORY_RULES = (
 )
 
 DEPARTMENT_RULES = (
+    ("IT Vertical", ("outsourced it services", "it outsourcing", "application maintenance", "data centre", "network services", "technology owner", "central inventory", "cloud governance")),
+    ("Procurement & Vendor Management", ("service provider", "vendor", "third-party", "due diligence", "subcontractor", "cloud provider")),
+    ("Legal Department", ("outsourcing agreement", "legally binding", "contract", "audit rights", "termination rights", "exit strategy", "rbi inspection access")),
+    ("Risk Management", ("risk assessment", "concentration risk", "operational risk", "technology risk", "risk management", "resilience")),
+    ("Cybersecurity Wing", ("outsourced security operations", "security operations centre", "security operations center", "soc", "alert rules", "incident response integration")),
+    ("Compliance Department", ("board-approved it outsourcing policy", "outsourcing policy", "regulatory reporting", "closure report", "compliance department")),
     ("Fraud Risk Department", ("fraud", "mule account", "mule", "digital fraud", "payment fraud", "reporting")),
     ("Cybersecurity / IT Security", ("cyber", "security log", "digital evidence", "incident", "authentication")),
     ("Compliance Office", ("rbi", "compliance", "regulatory", "submit", "report")),
@@ -116,6 +142,14 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("Board-approved outsourcing policy and management approval/sign-off", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
+    ("Outsourcing inventory export with owner, provider, criticality, data, and exit dependency fields", ("central inventory", "inventory of outsourced it", "outsourced it services")),
+    ("Service provider due diligence checklist and risk assessment approval", ("due diligence", "service provider", "third-party", "subcontractor")),
+    ("Signed outsourcing agreement clause checklist, audit rights, RBI inspection access, termination rights, and exit strategy evidence", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
+    ("Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion", ("cloud", "data portability", "secure deletion", "cloud governance")),
+    ("SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
+    ("BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
+    ("Audit report, SLA monitoring report, risk review, closure evidence, and management sign-off", ("audit report", "sla monitoring", "risk review", "closure of observations")),
     ("Fraud incident register with detection timestamp, reporting timestamp, customer impact, and evidence reference", ("fraud", "digital fraud", "payment fraud")),
     ("Customer notification proof, notification timestamp, and exception log", ("notify", "customer notification", "affected customer", "grievance")),
     ("Evidence archive inventory, retention configuration, and audit trail export", ("retain", "preserve", "evidence", "audit trail", "archive")),
@@ -133,6 +167,13 @@ def _normalize_space(value):
 
 def _clean_line(line):
     return re.sub(r"^\s*[-*0-9.)]+\s*", "", line or "").strip()
+
+
+def _is_metadata_line(line):
+    if ":" not in (line or ""):
+        return False
+    key = line.split(":", 1)[0].strip().lower()
+    return key in METADATA_KEYS
 
 
 def _dedupe(items):
@@ -161,14 +202,22 @@ def _extract_title(text, file_name):
         if not cleaned:
             continue
         lower = cleaned.lower()
+        if lower.startswith("title:"):
+            return _normalize_space(cleaned.split(":", 1)[1])
         if lower.startswith("subject:"):
             return _normalize_space(cleaned.split(":", 1)[1])
+        if _is_metadata_line(cleaned):
+            continue
         if "circular" not in lower and len(cleaned) >= 12:
             return cleaned[:140]
     return Path(file_name or "uploaded circular").stem.replace("_", " ").title()
 
 
 def _extract_circular_id(text, file_name):
+    metadata_match = re.search(r"^\s*circular_id\s*:\s*([^\n\r]+)", text or "", flags=re.I | re.M)
+    if metadata_match:
+        return _normalize_space(metadata_match.group(1))
+
     patterns = (
         r"\bRBI[/A-Z0-9.-]*[/ -]\d{4}[/A-Z0-9.-]*\b",
         r"\bRBI\s+Circular\s+No\.?\s*[:\-]?\s*[A-Z0-9/.-]+\b",
@@ -184,6 +233,9 @@ def _extract_circular_id(text, file_name):
 
 
 def _extract_issue_date(text):
+    issue_date = re.search(r"^\s*issue_date\s*:\s*([^\n\r]+)", text or "", flags=re.I | re.M)
+    if issue_date:
+        return _normalize_space(issue_date.group(1))
     date_line = re.search(r"\bDate\s*:\s*([^\n\r]+)", text, flags=re.I)
     if date_line:
         return _normalize_space(date_line.group(1))
@@ -198,6 +250,9 @@ def _extract_deadlines(text):
 
 
 def _extract_effective_date(text, deadlines):
+    effective_from = re.search(r"^\s*effective_from\s*:\s*([^\n\r]+)", text or "", flags=re.I | re.M)
+    if effective_from:
+        return _normalize_space(effective_from.group(1))
     effective_match = re.search(r"effective\s+(?:from|date)?\s*[:\-]?\s*([A-Za-z0-9 ,/-]+)", text, flags=re.I)
     if effective_match:
         return _normalize_space(effective_match.group(1))
@@ -208,14 +263,15 @@ def _extract_effective_date(text, deadlines):
 
 def _split_obligation_clauses(sentence):
     prepared = re.sub(
-        r"\s+and\s+(?=(?:notify|retain|submit|maintain|monitor|escalate|reconcile|verify|preserve|disclose|review|update|implement)\b)",
+        r"\s+and\s+(?=(?:notify|retain|submit|maintain|monitor|escalate|reconcile|verify|preserve|disclose|review|update|implement|conduct|perform|test)\b)",
         ", ",
         sentence,
         flags=re.I,
     )
     split_pattern = (
         r",\s+(?=(?:and\s+)?(?:notify|retain|submit|maintain|monitor|escalate|"
-        r"reconcile|verify|preserve|disclose|review|update|implement|report)\b)"
+        r"reconcile|verify|preserve|disclose|review|update|implement|conduct|"
+        r"perform|test|report)\b)"
     )
     return [_clean_line(part) for part in re.split(split_pattern, prepared) if _clean_line(part)]
 
@@ -238,7 +294,7 @@ def extract_obligations(text):
     candidates = []
     for line in text.splitlines():
         cleaned = _clean_line(line)
-        if cleaned:
+        if cleaned and not _is_metadata_line(cleaned):
             candidates.extend(re.split(r"(?<=[.!?])\s+", cleaned))
 
     if not candidates:
@@ -251,7 +307,7 @@ def extract_obligations(text):
             if _has_obligation_phrase(clause):
                 obligations.append(_normalize_obligation(clause))
 
-    return _dedupe(obligations)[:12]
+    return _dedupe(obligations)[:16]
 
 
 def _detect_risk_keywords(text):
@@ -370,7 +426,7 @@ def parse_circular_text(circular_text=None, file_name=None):
         }
 
     deadlines = _extract_deadlines(cleaned_text)
-    obligations = extract_obligations(cleaned_text)
+    obligations = extract_obligations(text)
     risk_keywords = _detect_risk_keywords(cleaned_text)
     category = _detect_category(cleaned_text, risk_keywords)
     departments = _detect_departments(cleaned_text, obligations)
@@ -396,10 +452,10 @@ def parse_circular_text(circular_text=None, file_name=None):
 
     return {
         "title": title,
-        "circular_id": _extract_circular_id(cleaned_text, file_name),
+        "circular_id": _extract_circular_id(text, file_name),
         "category": category,
         "issue_date": _extract_issue_date(text),
-        "effective_date": _extract_effective_date(cleaned_text, deadlines),
+        "effective_date": _extract_effective_date(text, deadlines),
         "deadline": primary_deadline,
         "deadlines": deadlines,
         "obligations": obligations,

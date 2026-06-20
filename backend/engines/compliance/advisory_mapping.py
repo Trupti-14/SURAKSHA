@@ -39,6 +39,11 @@ FALLBACK_ROWS = (
 )
 
 DOMAIN_HINTS = {
+    "IT outsourcing": ("outsourcing", "third-party risk", "it procurement", "contract management", "technology risk", "application management", "infrastructure management"),
+    "third-party risk": ("third-party risk", "vendor", "outsourcing", "procurement", "technology risk"),
+    "cloud outsourcing": ("cloud", "cloud operations", "cloud vendor management", "outsourcing"),
+    "SOC outsourcing": ("security operations center", "soc", "incident response", "cyber"),
+    "business continuity": ("business continuity", "disaster recovery", "operational risk"),
     "digital fraud": ("digital payment security controls", "digital banking services", "cyber security", "security operations center"),
     "fraud": ("digital payment security controls", "cyber security", "operational risk"),
     "mule account": ("fraud", "suspicious", "monitoring", "branch", "risk"),
@@ -73,6 +78,34 @@ STOP_WORDS = {
 }
 
 TEXT_HINTS = {
+    "it outsourcing": ("outsourcing", "third-party risk", "it procurement", "technology risk", "contract management"),
+    "outsourced it": ("outsourcing", "infrastructure management", "application management", "third-party risk"),
+    "central inventory": ("application management", "infrastructure management", "regulatory compliance"),
+    "outsourcing policy": ("regulatory compliance", "technology risk", "application management"),
+    "board-approved": ("regulatory compliance", "technology risk"),
+    "service provider": ("third-party risk", "vendor", "outsourcing"),
+    "due diligence": ("third-party risk", "vendor", "operational risk"),
+    "subcontractor": ("third-party risk", "vendor", "contract management"),
+    "concentration risk": ("third-party risk", "operational risk", "technology risk"),
+    "outsourcing agreement": ("contract management", "third-party risk", "outsourcing"),
+    "audit rights": ("contract management", "information systems audit", "regulatory audit"),
+    "rbi inspection": ("contract management", "regulatory compliance", "information systems audit"),
+    "termination rights": ("contract management", "third-party risk"),
+    "exit strategy": ("contract management", "third-party risk", "business continuity"),
+    "data portability": ("cloud operations", "cloud vendor management"),
+    "secure deletion": ("cloud operations", "cloud vendor management"),
+    "cloud governance": ("cloud operations", "cloud vendor management"),
+    "business continuity": ("business continuity", "disaster recovery", "operational risk"),
+    "disaster recovery": ("business continuity", "disaster recovery", "operational risk"),
+    "bcp": ("business continuity", "disaster recovery", "operational risk"),
+    "drp": ("business continuity", "disaster recovery", "operational risk"),
+    "security operations centre": ("security operations center", "soc", "incident response"),
+    "security operations center": ("security operations center", "soc", "incident response"),
+    "outsourced soc": ("security operations center", "soc", "incident response"),
+    "alert rules": ("security operations center", "soc"),
+    "incident response integration": ("security operations center", "incident response"),
+    "sla monitoring": ("third-party risk", "information systems audit", "operational risk"),
+    "periodic audits": ("information systems audit", "regulatory audit"),
     "cert-in": ("cert-in", "cybersecurity wing", "security operations center", "vulnerability management"),
     "cyber": ("cyber", "security operations center", "security architecture", "it security"),
     "security log": ("cyber", "soc", "information systems audit"),
@@ -221,6 +254,64 @@ def _score_row(row, query_text, query_tokens, risk_keywords, category):
     if "compliance" in query_text and "compliance" in row_text:
         score += 6
         reasons.append("Compliance reporting term matched compliance vertical")
+
+    if any(term in query_text for term in ("central inventory", "outsourced it services")):
+        if "application management" in row_text or "infrastructure management" in row_text:
+            score += 38
+            reasons.append("Outsourced IT inventory matched IT ownership row")
+        if "regulatory compliance" in row_text and "report" in query_text:
+            score += 22
+            reasons.append("Inventory reporting matched Compliance Department")
+
+    if "outsourcing policy" in query_text or "board-approved" in query_text:
+        if "regulatory compliance" in row_text:
+            score += 58
+            reasons.append("Board-approved outsourcing policy matched Compliance Department")
+        if "technology risk" in row_text:
+            score += 42
+            reasons.append("Board-approved outsourcing policy matched Technology Risk")
+        if "application management" in row_text:
+            score += 24
+            reasons.append("Board-approved outsourcing policy matched IT ownership")
+
+    if "due diligence" in query_text or "service provider" in query_text:
+        if "third-party risk management" in row_text:
+            score += 48
+            reasons.append("Service provider due diligence matched Third-Party Risk Management")
+
+    if any(term in query_text for term in ("outsourcing agreement", "audit rights", "rbi inspection", "termination rights", "exit strategy")):
+        if "contract management" in row_text:
+            score += 52
+            reasons.append("Outsourcing agreement obligation matched Legal Contract Management")
+        if "third-party risk management" in row_text:
+            score += 28
+            reasons.append("Contract oversight matched Third-Party Risk Management")
+
+    if any(term in query_text for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+        if "cloud operations" in row_text:
+            score += 48
+            reasons.append("Cloud governance obligation matched Cloud Operations")
+        if "cloud vendor management" in row_text:
+            score += 42
+            reasons.append("Cloud provider obligation matched Cloud Vendor Management")
+
+    if any(term in query_text for term in ("security operations centre", "security operations center", "outsourced soc", "alert rules", "incident response integration")):
+        if "security operations center" in row_text:
+            score += 55
+            reasons.append("Outsourced SOC obligation matched SOC row")
+
+    if any(term in query_text for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")):
+        if "business continuity" in row_text or "disaster recovery" in row_text:
+            score += 48
+            reasons.append("BCP/DR obligation matched continuity row")
+        if "operational risk" in row_text:
+            score += 28
+            reasons.append("BCP/DR risk obligation matched Operational Risk")
+
+    if any(term in query_text for term in ("audit reports", "periodic audits", "sla monitoring", "contract reviews", "closure of observations")):
+        if "information systems audit" in row_text:
+            score += 48
+            reasons.append("Service provider audit obligation matched IS Audit")
 
     return score, reasons
 
