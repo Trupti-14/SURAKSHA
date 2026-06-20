@@ -4,6 +4,7 @@ from typing import Optional
 from engines.compliance.workflow import run_compliance_workflow
 from engines.compliance.scout import get_circular_by_id, parse_circular_text, scan_circulars
 from engines.compliance.vision import verify_evidence_from_upload
+from engines.compliance.chroma_store import list_circulars as list_memory_circulars
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -121,6 +122,35 @@ def _circular_item_from_local(local_circular: dict) -> dict:
     }
 
 
+def _circular_item_from_memory(memory_circular: dict) -> dict:
+    metadata = memory_circular.get("metadata") or {}
+    circular_id = memory_circular.get("circular_id") or memory_circular.get("id") or metadata.get("circular_id")
+    title = memory_circular.get("title") or metadata.get("title") or circular_id
+    category = memory_circular.get("category") or metadata.get("category") or "Regulatory Compliance"
+    content = memory_circular.get("content") or ""
+    summary = memory_circular.get("content_excerpt") or "Seeded regulatory memory circular available for analysis."
+    return {
+        "id": circular_id,
+        "circular_id": circular_id,
+        "title": title,
+        "regulator": metadata.get("regulator", "Reserve Bank of India"),
+        "issue_date": metadata.get("issue_date", "Local"),
+        "deadline": metadata.get("deadline", "To be assessed"),
+        "category": category,
+        "source": memory_circular.get("source", "regulatory_memory"),
+        "status": "available",
+        "summary": summary,
+        "old_policy": "Seeded regulatory memory baseline.",
+        "new_policy": summary,
+        "detected_gap": "Run analysis to compare a new circular against this memory.",
+        "text": content,
+        "priority_score": 5,
+        "priority_label": "Medium",
+        "priority_reason": "Priority is assigned after workflow analysis.",
+        "regulatory_reference": metadata.get("title", title),
+    }
+
+
 @router.post("/analyze")
 def analyze_circular(request: CircularRequest):
     content = request.circular_text or request.content
@@ -186,6 +216,20 @@ async def verify_evidence(
 
 @router.get("/circulars")
 def list_circulars():
+    try:
+        memory_items = [_circular_item_from_memory(item) for item in list_memory_circulars()]
+    except Exception:
+        memory_items = []
+
+    if memory_items:
+        return {
+            "items": memory_items,
+            "circulars": memory_items,
+            "count": len(memory_items),
+            "total": len(memory_items),
+            "offline_mode": True,
+        }
+
     try:
         circulars = scan_circulars()
         items = [_circular_item_from_local(circular) for circular in circulars]

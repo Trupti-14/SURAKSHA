@@ -1,19 +1,16 @@
-RBI Circular No. RBI/2026/001
-Date: June 2026
-Subject: Mandatory Two-Factor Authentication for Internet Banking
+circular_id: RBI-BASE-2025-001
+title: Baseline Digital Fraud Reporting and Customer Notification Advisory
+category: Digital Fraud / Reporting
+issue_date: 2025-04-15
+regulator: Reserve Bank of India
+effective_from: 2025-05-01
 
-All scheduled commercial banks are hereby directed to implement mandatory 
-two-factor authentication (2FA) for all internet banking transactions 
-exceeding Rs 10,000. 
+The Reserve Bank of India advises all scheduled commercial banks to maintain a baseline digital fraud reporting process for internet banking, mobile banking, card-not-present payments, UPI-linked transactions, and other cyber-enabled payment channels. This advisory establishes the earlier control expectation against which future accelerated fraud reporting circulars may be assessed by bank compliance teams.
 
-Banks must ensure:
-1. OTP-based verification for all high-value transactions
-2. Biometric authentication option for mobile banking users
-3. Session timeout of 5 minutes for inactive sessions
-4. Real-time SMS/email alerts for all transactions above Rs 5,000
+Banks must record every confirmed or suspected digital fraud incident in a central incident register within 24 hours of detection by the branch, fraud monitoring team, contact centre, or digital channels operations team. The register should capture customer identifier, transaction reference, fraud category, detection timestamp, preliminary loss estimate, affected channel, reporting owner, and current containment status. The Fraud Risk Department should review the register daily and escalate unresolved high-value cases to the Compliance Office.
 
-Implementation deadline: 30 days from date of circular.
-Non-compliance will attract penalty under Section 47 of Banking Regulation Act.
+Banks should notify affected customers through registered mobile number, email, branch communication, or contact centre callback when fraud impact is confirmed. The notification should describe the transaction under review, customer reporting options, expected support process, and grievance escalation channel. The customer notification process may be completed within 24 hours after internal confirmation of fraud impact, unless a law enforcement hold or operational risk exception is approved.
 
-Signed,
-Governor, Reserve Bank of India
+The Compliance Office must submit a consolidated fraud incident summary to senior management and internal compliance forums on a monthly basis. The summary should include fraud trend, impacted channels, recovery status, customer complaints, regulatory reporting status, and corrective actions. Regulatory reporting to RBI or law enforcement should follow the bank's existing fraud reporting SOP and applicable materiality thresholds.
+
+Banks must retain incident register entries, customer notification proof, investigation notes, and approval records for audit review. Internal Audit may sample fraud records during periodic compliance testing. This advisory does not mandate four-hour reporting, customer impact metadata in every regulatory submission, or automated evidence hash preservation. Banks are expected to update this baseline when RBI issues a stricter circular.

@@ -1,0 +1,16 @@
+circular_id: RBI-BASE-2025-003
+title: Cyber Incident Evidence Retention and Audit Trail Directive
+category: Cyber Incident / Evidence Retention / Audit
+issue_date: 2025-09-05
+regulator: Reserve Bank of India
+effective_from: 2025-10-01
+
+The Reserve Bank of India directs banks to maintain baseline cybersecurity incident records, evidence retention controls, Security Operations Center escalation procedures, and audit trail preservation for technology and digital banking incidents. The directive applies to internet banking, mobile banking, payment gateways, internal banking applications, infrastructure systems, cloud workloads, and third-party technology services used for regulated banking operations.
+
+Banks must log cybersecurity events that indicate unauthorized access, malware infection, data leakage, privilege misuse, payment channel compromise, distributed denial of service, credential theft, or suspicious administrative activity. The Security Operations Center should register each incident with detection timestamp, affected asset, impacted channel, severity, initial containment action, ticket owner, and escalation status. Critical events should be escalated to Cybersecurity / IT Security leadership and the Technology Risk team within 24 hours.
+
+Banks should preserve relevant evidence for every material cybersecurity incident. Evidence may include SIEM alerts, firewall logs, endpoint telemetry, identity and access logs, application logs, transaction monitoring extracts, incident tickets, forensic images where available, and containment approval records. Evidence must be stored in a controlled repository with access logs and chain-of-custody notes. Audit records should be maintained for at least five years or longer where legal, regulatory, or investigation requirements apply.
+
+The Compliance Office, Cybersecurity Wing, IT Vertical, and Internal Audit should coordinate periodic review of incident closure quality. Internal Audit may verify that incident tickets contain evidence references, root cause summary, customer impact assessment if applicable, remediation status, and management sign-off. Material incidents should be summarized for senior management and risk committees in the regular cyber resilience review.
+
+This directive does not require automated evidence hash generation for every incident, four-hour external reporting, or mandatory CERT-In escalation for all low-severity events. Later circulars or CERT-In directions may impose stricter timelines, reporting formats, evidence artifacts, or regulator notification procedures. Banks must compare new circulars against this directive before updating the cyber incident response SOP.
