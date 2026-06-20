@@ -1,6 +1,6 @@
 {
   "offline_mode": true,
-  "updated_at": "2026-06-20T04:17:25.683936",
+  "updated_at": "2026-06-20T04:35:49.018918",
   "count": 3,
   "items": [
     {
@@ -19,7 +19,7 @@
         "source": "local_seed",
         "file_name": "rbi_circular_001.txt",
         "path": "E:\\Shriyans\\backend\\data\\circulars\\rbi_circular_001.txt",
-        "stored_at": "2026-06-20T04:17:25.673492"
+        "stored_at": "2026-06-20T04:35:49.004139"
       },
       "embedding": [
         0.035482015122049064,
@@ -152,7 +152,7 @@
         0.036495786982679045
       ],
       "source": "local_seed",
-      "updated_at": "2026-06-20T04:17:25.674259"
+      "updated_at": "2026-06-20T04:35:49.004984"
     },
     {
       "circular_id": "RBI-BASE-2025-002",
@@ -170,7 +170,7 @@
         "source": "local_seed",
         "file_name": "rbi_circular_002.txt",
         "path": "E:\\Shriyans\\backend\\data\\circulars\\rbi_circular_002.txt",
-        "stored_at": "2026-06-20T04:17:25.677247"
+        "stored_at": "2026-06-20T04:35:49.008609"
       },
       "embedding": [
         0.029312944656055936,
@@ -303,7 +303,7 @@
         -0.023248197485837466
       ],
       "source": "local_seed",
-      "updated_at": "2026-06-20T04:17:25.677950"
+      "updated_at": "2026-06-20T04:35:49.009798"
     },
     {
       "circular_id": "RBI-BASE-2025-003",
@@ -321,7 +321,7 @@
         "source": "local_seed",
         "file_name": "rbi_circular_003.txt",
         "path": "E:\\Shriyans\\backend\\data\\circulars\\rbi_circular_003.txt",
-        "stored_at": "2026-06-20T04:17:25.681351"
+        "stored_at": "2026-06-20T04:35:49.015616"
       },
       "embedding": [
         -0.06487985191501099,
@@ -454,7 +454,7 @@
         0.035389010135460544
       ],
       "source": "local_seed",
-      "updated_at": "2026-06-20T04:17:25.682532"
+      "updated_at": "2026-06-20T04:35:49.017394"
     }
   ]
 }
