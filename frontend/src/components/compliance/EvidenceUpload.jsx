@@ -39,15 +39,15 @@ function backendUnavailableResult(errorMessage) {
     file_type: "unknown",
     summary:
       errorMessage ??
-      "Evidence could not be verified automatically. Manual custodian review is required.",
+      "Evidence could not be verified automatically. Manual compliance review is required.",
     findings: [
       {
         severity: "Medium",
         page: 1,
         location: "file header",
-        reason: "The offline evidence verification backend did not return a trusted result.",
+        reason: "The secure evidence verifier did not return a trusted result.",
         suggested_action:
-          "Keep the evidence in manual review until the backend verifier is available.",
+          "Keep the evidence in manual review until verification is available.",
       },
     ],
     checks: {
@@ -98,7 +98,11 @@ function formatCheckName(name) {
     .join(" ");
 }
 
-export default function EvidenceUpload({ selectedAction }) {
+export default function EvidenceUpload({
+  selectedAction,
+  locked = false,
+  lockedMessage = "Evidence verification will be available after actions are generated.",
+}) {
   const inputRef = useRef(null);
   const [fileName, setFileName] = useState("");
   const [result, setResult] = useState(null);
@@ -108,6 +112,10 @@ export default function EvidenceUpload({ selectedAction }) {
   const isVerifying = verificationState === "loading";
 
   async function handleFileChange(event) {
+    if (locked) {
+      return;
+    }
+
     const file = event.target.files?.[0] ?? null;
 
     setFileName(file?.name ?? "");
@@ -146,11 +154,10 @@ export default function EvidenceUpload({ selectedAction }) {
     <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
       <div className="border-b border-slate-800/80 px-5 py-4">
         <h2 className="text-base font-semibold tracking-wide text-slate-50">
-          Evidence Upload
+          Evidence Verification
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Upload proof for the selected action point. Evidence is checked by the
-          offline verifier before compliance closure.
+          Upload proof for the selected action. Evidence is checked before compliance closure.
         </p>
       </div>
 
@@ -160,7 +167,7 @@ export default function EvidenceUpload({ selectedAction }) {
             Selected MAP
           </p>
           <p className="mt-2 text-sm font-medium leading-6 text-slate-100">
-            {selectedAction?.action ?? "Select an action point for evidence review"}
+            {selectedAction?.action ?? "Evidence verification will be available after actions are generated."}
           </p>
           {selectedAction?.evidence_required && (
             <p className="mt-2 text-xs leading-5 text-slate-400">
@@ -174,7 +181,17 @@ export default function EvidenceUpload({ selectedAction }) {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        {locked ? (
+          <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+            <p className="text-sm font-semibold text-slate-200">
+              Evidence Locked
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {lockedMessage}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
           <input
             ref={inputRef}
             className="hidden"
@@ -185,7 +202,7 @@ export default function EvidenceUpload({ selectedAction }) {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            disabled={isVerifying}
+            disabled={isVerifying || locked}
             className="rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-[#06101f] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
             {isVerifying ? "Verifying..." : "Upload Proof"}
@@ -198,15 +215,16 @@ export default function EvidenceUpload({ selectedAction }) {
               Allowed types: PDF, PNG, JPG, DOCX
             </p>
           </div>
-        </div>
-
-        {isVerifying && (
-          <div className="rounded-lg border border-sky-400/25 bg-sky-500/[0.08] px-4 py-3 text-sm font-medium text-sky-200">
-            Verifying evidence through the offline backend...
           </div>
         )}
 
-        {result && !isVerifying && (
+        {!locked && isVerifying && (
+          <div className="rounded-lg border border-sky-400/25 bg-sky-500/[0.08] px-4 py-3 text-sm font-medium text-sky-200">
+            Verifying evidence...
+          </div>
+        )}
+
+        {!locked && result && !isVerifying && (
           <div className={`rounded-lg border p-4 ${tone.panel}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -290,14 +308,14 @@ export default function EvidenceUpload({ selectedAction }) {
           </div>
         )}
 
-        {!result && !isVerifying && (
+        {!locked && !result && !isVerifying && (
           <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
             <p className="text-sm font-semibold text-slate-200">
               Compliance verification status: Waiting for evidence
             </p>
             <p className="mt-2 text-xs leading-5 text-slate-500">
-              Evidence is not accepted until the backend verifier returns
-              APPROVED or a custodian completes manual review.
+              Evidence is not accepted until verification returns APPROVED or a
+              compliance officer completes manual review.
             </p>
           </div>
         )}

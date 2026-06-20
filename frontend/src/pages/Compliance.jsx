@@ -5,9 +5,27 @@ import EvidenceUpload from "../components/compliance/EvidenceUpload.jsx";
 import Layout from "../components/ui/Layout.jsx";
 import {
   analyzeComplianceCircular,
-  fetchComplianceActions,
   fetchComplianceCirculars,
 } from "../lib/compliance-api.js";
+
+const demoCircularText = `circular_id: RBI-NEW-2026-004
+title: Enhanced Digital Fraud Reporting, Customer Protection, and Evidence Preservation Circular
+category: Digital Fraud / Customer Protection / Cyber Incident Reporting
+issue_date: 2026-06-20
+regulator: Reserve Bank of India
+effective_from: 2026-07-01
+
+Banks must report confirmed or suspected digital fraud cases involving internet banking, mobile banking, UPI, card-not-present transactions, API banking, or digital lending platforms within 4 hours of detection by the branch, fraud monitoring team, contact centre, or digital operations unit.
+
+Banks must notify affected customers within 24 hours of confirming customer impact. The notification should include the disputed transaction reference, complaint channel, expected resolution process, escalation contact, and customer protection guidance.
+
+Banks must retain fraud evidence, customer communication proof, investigation records, transaction logs, system alerts, and audit trails for at least 5 years. Evidence should be stored in a controlled repository with access logs and chain-of-custody records.
+
+Banks should ensure CERT-In cyber incident escalation wherever digital fraud involves malware, unauthorized access, data leakage, credential theft, payment system compromise, suspicious infrastructure activity, or material cyber security impact.
+
+Banks must submit monthly digital fraud monitoring reports to the Compliance Office and senior management. The report should include incident count, impacted channels, customer complaints, recovery status, unresolved cases, root cause trends, mule account linkage, and corrective action status.
+
+Banks should maintain audit trails for suspicious mule account cases connected to digital fraud proceeds. Branch Operations, Fraud Risk, KYC/AML Compliance, Cybersecurity, and Internal Audit must coordinate evidence review and closure tracking.`;
 
 const fallbackCirculars = [
   {
@@ -15,141 +33,140 @@ const fallbackCirculars = [
     title: "Enhanced Monitoring of Mule Accounts",
     regulator: "Reserve Bank of India",
     issue_date: "2026-06-01",
-    deadline: "2026-06-21",
     category: "Fraud Risk Monitoring",
     summary:
       "Banks must tighten detection of suspected mule accounts, add weekly branch-level review, and report high-risk account clusters to the fraud monitoring cell.",
-    old_policy:
-      "Mule account checks were performed during monthly AML reviews using threshold-based alerts and manual branch escalations.",
-    new_policy:
-      "Mule account monitoring must run daily using transaction velocity, beneficiary churn, device overlap, and rapid cash-out indicators, with weekly evidence packs retained for audit.",
-    detected_gap:
-      "Monthly AML review cadence does not satisfy daily mule-account surveillance, weekly branch escalation, or regulator-ready evidence retention.",
     text: "All regulated entities shall enhance monitoring of mule accounts and suspected fraud conduits. Daily transaction surveillance, branch-level accountability, weekly escalation logs, and regulator-ready evidence are required. Customer impact from blocked accounts must be reviewed with documented justification.",
-    priority_score: 10,
-    priority_label: "Critical",
-    priority_reason:
-      "risk keywords: fraud, mule; deadline within 21 days; customer impact and reporting terms",
   },
   {
     circular_id: "RBI-SYN-2026-002",
     title: "KYC Re-verification Advisory",
     regulator: "Reserve Bank of India",
     issue_date: "2026-06-04",
-    deadline: "2026-07-19",
     category: "KYC Operations",
     summary:
       "Banks should refresh KYC for stale or inconsistent customer records and preserve proof of customer notification, re-verification, and exception approvals.",
-    old_policy:
-      "KYC refresh was handled through periodic batch campaigns and branch-led exception handling for missing documents.",
-    new_policy:
-      "KYC re-verification must prioritize high-risk customers, dormant accounts, inconsistent identity fields, and accounts with recent fraud flags, with auditable notification evidence.",
-    detected_gap:
-      "Batch campaign controls do not show risk-first segmentation, fraud-flag routing, or complete customer notification evidence.",
     text: "Regulated entities are advised to complete KYC re-verification for stale customer records. Customer communication, exception notes, overdue reporting, and branch approval evidence must be retained. Service disruption and customer impact should be minimized through documented outreach.",
-    priority_score: 7,
-    priority_label: "High",
-    priority_reason:
-      "fraud-flagged records, reporting evidence, and customer impact controls",
   },
   {
     circular_id: "RBI-SYN-2026-003",
     title: "Digital Fraud Reporting Directive",
     regulator: "Reserve Bank of India",
     issue_date: "2026-06-07",
-    deadline: "2026-06-17",
     category: "Digital Fraud Reporting",
     summary:
       "Banks must accelerate digital fraud reporting, preserve incident evidence, and submit structured updates for cyber-enabled payment fraud cases.",
-    old_policy:
-      "Digital fraud incidents were consolidated into daily summaries and reported after internal confirmation by operations and cyber teams.",
-    new_policy:
-      "Digital fraud incidents must be triaged within four hours, reported in structured format, linked to cyber telemetry, and supported by customer-impact evidence.",
-    detected_gap:
-      "Daily summary reporting is slower than the four-hour triage requirement and lacks structured telemetry-linked evidence.",
     text: "All banks shall strengthen digital fraud reporting for cyber-enabled payment incidents. Four-hour triage, structured reporting, penalty-aware breach tracking, customer impact notes, and incident evidence retention are mandatory for compliance review.",
-    priority_score: 10,
-    priority_label: "Critical",
-    priority_reason:
-      "fraud, cyber, payment, penalty, reporting, and short deadline terms",
   },
 ];
 
-const fallbackActions = [
-  {
-    id: "MAP-RBI-SYN-2026-001-01",
-    circular_id: "RBI-SYN-2026-001",
-    action: "Map mule-account alert scenarios to daily surveillance rules",
-    owner: "Fraud Risk Operations",
-    deadline: "2026-06-21",
-    priority_score: 10,
-    priority_label: "Critical",
-    evidence_required: "Rule configuration screenshot and daily alert export",
-    status: "In Progress",
-    reason:
-      "Circular requires daily mule account monitoring using transaction and device indicators.",
-  },
-  {
-    id: "MAP-RBI-SYN-2026-001-02",
-    circular_id: "RBI-SYN-2026-001",
-    action: "Create weekly branch escalation pack for suspected mule clusters",
-    owner: "Fraud Risk Operations",
-    deadline: "2026-06-21",
-    priority_score: 10,
-    priority_label: "Critical",
-    evidence_required: "Weekly escalation register with branch owner sign-off",
-    status: "Pending Review",
-    reason: "Weekly escalation logs and regulator-ready evidence are required.",
-  },
-  {
-    id: "MAP-RBI-SYN-2026-002-01",
-    circular_id: "RBI-SYN-2026-002",
-    action: "Segment stale KYC records by risk and exception status",
-    owner: "KYC Compliance Desk",
-    deadline: "2026-07-19",
-    priority_score: 7,
-    priority_label: "High",
-    evidence_required: "Customer segment export and exception approval sample",
-    status: "Pending Review",
-    reason: "Circular prioritizes stale, dormant, inconsistent, and fraud-flagged records.",
-  },
-  {
-    id: "MAP-RBI-SYN-2026-002-02",
-    circular_id: "RBI-SYN-2026-002",
-    action: "Capture customer notification proof for KYC re-verification",
-    owner: "KYC Compliance Desk",
-    deadline: "2026-07-19",
-    priority_score: 7,
-    priority_label: "High",
-    evidence_required: "SMS/email campaign proof and branch outreach tracker",
-    status: "Pending Review",
-    reason: "Auditable customer notification evidence must be retained.",
-  },
-  {
-    id: "MAP-RBI-SYN-2026-003-01",
-    circular_id: "RBI-SYN-2026-003",
-    action: "Implement four-hour digital fraud triage checklist",
-    owner: "Digital Fraud Response Cell",
-    deadline: "2026-06-17",
-    priority_score: 10,
-    priority_label: "Critical",
-    evidence_required: "Incident checklist sample with timestamped triage fields",
-    status: "In Progress",
-    reason: "Circular mandates accelerated triage for cyber-enabled payment fraud.",
-  },
-  {
-    id: "MAP-RBI-SYN-2026-003-02",
-    circular_id: "RBI-SYN-2026-003",
-    action: "Prepare structured digital fraud reporting evidence pack",
-    owner: "Digital Fraud Response Cell",
-    deadline: "2026-06-17",
-    priority_score: 10,
-    priority_label: "Critical",
-    evidence_required: "Structured report sample and customer impact note",
-    status: "Pending Review",
-    reason: "Reporting, cyber telemetry linkage, and customer impact evidence are mandatory.",
-  },
+const checkItems = [
+  "Extracts key obligations and deadlines",
+  "Compares against approved policy references",
+  "Detects policy gaps and impacted departments",
+  "Generates action points and evidence requirements",
 ];
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getTextField(item, candidates, fallback) {
+  if (typeof item === "string") {
+    return item;
+  }
+
+  if (!item || typeof item !== "object") {
+    return fallback;
+  }
+
+  const key = candidates.find(
+    (candidate) =>
+      typeof item[candidate] === "string" && item[candidate].trim().length > 0,
+  );
+
+  return key ? item[key] : fallback;
+}
+
+function normalizeCircularItem(item, index) {
+  return {
+    circular_id: item.circular_id ?? item.id ?? `REF-${index + 1}`,
+    title: item.title ?? item.id ?? `Policy Reference ${index + 1}`,
+    regulator: item.regulator ?? item.primary_regulator ?? "Reserve Bank of India",
+    issue_date: item.issue_date ?? "Reference",
+    category: item.category ?? "Regulatory Compliance",
+    summary:
+      item.summary ??
+      item.normalized_summary ??
+      item.content_excerpt ??
+      "Approved baseline reference available for comparison.",
+    text: item.text ?? item.content ?? item.summary ?? "",
+  };
+}
+
+function normalizeActionPoint(item, index, priority) {
+  const action = typeof item === "string" ? { action: item } : item ?? {};
+
+  return {
+    id: action.id ?? action.map_id ?? action.action_id ?? `ACTION-${index + 1}`,
+    action:
+      action.action ??
+      action.action_point ??
+      action.description ??
+      action.title ??
+      "Review generated compliance action",
+    owner: action.owner ?? action.assigned_to ?? action.department ?? "Compliance Office",
+    department: action.department ?? action.owner ?? "Compliance Office",
+    business_vertical: action.business_vertical ?? "Compliance",
+    sub_vertical: action.sub_vertical ?? "Regulatory Compliance",
+    deadline: action.deadline ?? action.due_date ?? "To be assigned",
+    priority_score: action.priority_score ?? priority.priority_score ?? 0,
+    priority_label: action.priority_label ?? priority.priority_label ?? "Medium",
+    evidence_required:
+      action.evidence_required ??
+      action.evidence ??
+      action.proof_required ??
+      "Evidence requirement to be confirmed by the owner",
+    status: action.status ?? "Pending Evidence",
+    reason:
+      action.reason ??
+      action.priority_reason ??
+      action.assignment_basis ??
+      "Generated from the circular review.",
+  };
+}
+
+function normalizeGap(item, index) {
+  const gap = typeof item === "string" ? { policy_gap: item } : item ?? {};
+  const department =
+    gap.department ??
+    gap.owner_department ??
+    gap.impacted_department ??
+    gap.business_vertical ??
+    "Compliance Office";
+
+  return {
+    id: gap.id ?? gap.gap_id ?? `GAP-${index + 1}`,
+    new_requirement: getTextField(
+      gap,
+      ["new_requirement", "new_policy", "requirement", "obligation", "description"],
+      "New requirement was not specified.",
+    ),
+    existing_reference: getTextField(
+      gap,
+      ["old_requirement", "old_policy", "existing_requirement", "current_policy"],
+      "Existing reference was not specified.",
+    ),
+    policy_gap: getTextField(
+      gap,
+      ["policy_gap", "detected_gap", "gap", "summary", "description"],
+      "Gap detail was not specified.",
+    ),
+    severity: gap.severity ?? gap.priority_label ?? "Medium",
+    department,
+    business_vertical: gap.business_vertical ?? department,
+  };
+}
 
 function SummaryCard({ label, value, detail, tone = "sky" }) {
   const toneClassName = {
@@ -160,12 +177,12 @@ function SummaryCard({ label, value, detail, tone = "sky" }) {
   };
 
   return (
-    <div className="min-h-[104px] rounded-xl border border-slate-800/80 bg-[#0f1b2d] p-4 shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
+    <div className="min-h-[96px] rounded-xl border border-slate-800/80 bg-[#0f1b2d] p-4 shadow-[0_16px_36px_rgba(2,6,23,0.22)]">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
         {label}
       </p>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <p className="text-2xl font-semibold tabular-nums tracking-tight text-slate-50 xl:text-3xl">
+        <p className="text-xl font-semibold tabular-nums tracking-tight text-slate-50 xl:text-2xl">
           {value}
         </p>
         <span
@@ -182,159 +199,32 @@ function priorityTone(label) {
   if (label === "Critical") {
     return "bg-red-500/[0.12] text-red-300 ring-red-500/25";
   }
+
   if (label === "High") {
     return "bg-amber-500/[0.12] text-amber-300 ring-amber-500/25";
   }
+
+  if (label === "Low") {
+    return "bg-emerald-500/[0.12] text-emerald-300 ring-emerald-500/25";
+  }
+
   return "bg-sky-500/[0.12] text-sky-300 ring-sky-500/25";
 }
 
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function getReadableItem(item, candidates = []) {
-  if (typeof item === "string") {
-    return item;
-  }
-
-  if (!item || typeof item !== "object") {
-    return "No detail provided.";
-  }
-
-  const readableKey = candidates.find(
-    (key) => typeof item[key] === "string" && item[key].trim().length > 0,
-  );
-
-  if (readableKey) {
-    return item[readableKey];
-  }
-
-  return Object.entries(item)
-    .filter(([, value]) => typeof value === "string" || typeof value === "number")
-    .map(([key, value]) => `${key}: ${value}`)
-    .join("; ");
-}
-
-function normalizeActionPoint(item, index, circular, priority) {
-  if (typeof item === "string") {
-    return {
-      id: `API-MAP-${circular.circular_id}-${index + 1}`,
-      circular_id: circular.circular_id,
-      action: item,
-      owner: "Compliance Operations",
-      deadline: circular.deadline ?? "To be assigned",
-      priority_score: priority.priority_score ?? circular.priority_score,
-      priority_label: priority.priority_label ?? circular.priority_label,
-      evidence_required: "Compliance evidence pack to be defined by owner",
-      status: "Backend Draft",
-      reason: "Generated from backend compliance analysis.",
-    };
-  }
-
-  const action = item ?? {};
-
-  return {
-    id:
-      action.id ??
-      action.map_id ??
-      action.action_id ??
-      `API-MAP-${circular.circular_id}-${index + 1}`,
-    circular_id: circular.circular_id,
-    action:
-      action.action ??
-      action.action_point ??
-      action.description ??
-      action.title ??
-      "Review generated compliance action point",
-    owner: action.owner ?? action.assigned_to ?? action.department ?? "Compliance Operations",
-    deadline: action.deadline ?? action.due_date ?? circular.deadline ?? "To be assigned",
-    priority_score:
-      action.priority_score ?? priority.priority_score ?? circular.priority_score,
-    priority_label:
-      action.priority_label ?? priority.priority_label ?? circular.priority_label,
-    evidence_required:
-      action.evidence_required ??
-      action.evidence ??
-      action.proof_required ??
-      "Compliance evidence pack to be defined by owner",
-    status: action.status ?? "Backend Draft",
-    reason:
-      action.reason ??
-      action.priority_reason ??
-      "Generated from backend compliance analysis.",
-  };
-}
-
-function normalizeCircularItem(item, index) {
-  return {
-    circular_id: item.circular_id ?? item.id ?? `API-CIRCULAR-${index + 1}`,
-    title: item.title ?? item.id ?? `Compliance Circular ${index + 1}`,
-    regulator: item.regulator ?? item.primary_regulator ?? "Reserve Bank of India",
-    issue_date: item.issue_date ?? "Local",
-    deadline: item.deadline ?? "To be assessed",
-    category: item.category ?? "Regulatory Compliance",
-    summary:
-      item.summary ??
-      item.normalized_summary ??
-      "Local circular available for compliance review.",
-    old_policy:
-      item.old_policy ?? "Existing policy baseline will be assessed during analysis.",
-    new_policy:
-      item.new_policy ??
-      item.summary ??
-      "Run analysis to extract circular requirements.",
-    detected_gap: item.detected_gap ?? "Run analysis to generate policy gaps.",
-    text: item.text ?? item.content ?? item.summary ?? "",
-    priority_score: item.priority_score ?? 5,
-    priority_label: item.priority_label ?? "Medium",
-    priority_reason:
-      item.priority_reason ?? "Priority is assigned after compliance analysis.",
-    source: item.source ?? "backend",
-    status: item.status ?? "available",
-  };
-}
-
-function normalizeActionTemplate(item, index, circularId) {
-  return {
-    id: item.id ?? `API-MAP-${index + 1}`,
-    circular_id: item.circular_id ?? circularId,
-    action: item.action ?? "Review compliance action point",
-    owner: item.owner ?? item.department ?? "Compliance Office",
-    department: item.department ?? "Compliance Office",
-    deadline: item.deadline ?? "To be assigned",
-    priority_score: item.priority_score ?? 5,
-    priority_label: item.priority_label ?? "Medium",
-    evidence_required:
-      item.evidence_required ?? "Compliance evidence pack and owner sign-off",
-    status: item.status ?? "Pending Review",
-    reason: item.reason ?? "Loaded from backend compliance action template.",
-    business_vertical: item.business_vertical,
-    sub_vertical: item.sub_vertical,
-    linked_gap_id: item.linked_gap_id,
-    source_obligation: item.source_obligation,
-    acceptance_criteria: item.acceptance_criteria,
-    regulatory_reference: item.regulatory_reference,
-    official_link: item.official_link,
-    assignment_basis: item.assignment_basis,
-  };
-}
-
-function AnalysisList({ title, items, candidates, emptyText }) {
-  const safeItems = asArray(items);
-
+function RequirementList({ title, items, emptyText }) {
   return (
     <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
         {title}
       </p>
-      {safeItems.length > 0 ? (
+      {items.length > 0 ? (
         <ul className="mt-3 space-y-2">
-          {safeItems.map((item, index) => (
+          {items.map((item, index) => (
             <li
               key={`${title}-${index}`}
               className="rounded-md border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-sm leading-6 text-slate-300"
             >
-              {getReadableItem(item, candidates)}
+              {getTextField(item, ["obligation", "requirement", "description", "summary"], String(item))}
             </li>
           ))}
         </ul>
@@ -347,510 +237,622 @@ function AnalysisList({ title, items, candidates, emptyText }) {
 
 export default function Compliance() {
   const [circulars, setCirculars] = useState(fallbackCirculars);
-  const [actions, setActions] = useState(fallbackActions);
-  const [selectedCircularId, setSelectedCircularId] = useState(
+  const [selectedReferenceId, setSelectedReferenceId] = useState(
     fallbackCirculars[0].circular_id,
   );
-  const [selectedActionId, setSelectedActionId] = useState(fallbackActions[0].id);
-  const [analysisResultsByCircularId, setAnalysisResultsByCircularId] = useState({});
+  const [referencesOpen, setReferencesOpen] = useState(false);
+  const [circularText, setCircularText] = useState("");
+  const [fileName, setFileName] = useState("new-rbi-circular.txt");
+  const [analysis, setAnalysis] = useState(null);
+  const [selectedActionId, setSelectedActionId] = useState("");
   const [analysisState, setAnalysisState] = useState({
     status: "idle",
-    circularId: "",
     error: "",
   });
 
   useEffect(() => {
     let alive = true;
 
-    async function loadComplianceData() {
+    async function loadPolicyReferences() {
       try {
-        const [circularPayload, actionPayload] = await Promise.all([
-          fetchComplianceCirculars(),
-          fetchComplianceActions(),
-        ]);
+        const circularPayload = await fetchComplianceCirculars();
 
-        if (circularPayload?.ok === false || actionPayload?.ok === false) {
+        if (circularPayload?.ok === false) {
           return;
         }
 
-        if (alive) {
-          const normalizedCirculars = asArray(
-            circularPayload.items ?? circularPayload.circulars,
-          ).map(normalizeCircularItem);
-          const nextCirculars =
-            normalizedCirculars.length > 0 ? normalizedCirculars : fallbackCirculars;
-          const firstCircularId = nextCirculars[0]?.circular_id;
-          const normalizedActions = asArray(
-            actionPayload.items ?? actionPayload.actions,
-          ).map((action, index) =>
-            normalizeActionTemplate(action, index, firstCircularId),
-          );
+        const normalizedCirculars = asArray(
+          circularPayload.items ?? circularPayload.circulars ?? circularPayload,
+        ).map(normalizeCircularItem);
 
-          setCirculars(nextCirculars);
-          setActions(normalizedActions.length > 0 ? normalizedActions : fallbackActions);
+        if (alive && normalizedCirculars.length > 0) {
+          setCirculars(normalizedCirculars);
+          setSelectedReferenceId((currentId) =>
+            normalizedCirculars.some((item) => item.circular_id === currentId)
+              ? currentId
+              : normalizedCirculars[0].circular_id,
+          );
         }
       } catch {
-        // Offline-first demo path: keep local synthetic data when no backend is running.
+        // Keep the built-in policy references for the prototype if the service is unavailable.
       }
     }
 
-    loadComplianceData();
+    loadPolicyReferences();
 
     return () => {
       alive = false;
     };
   }, []);
 
-  const selectedCircular =
-    circulars.find((circular) => circular.circular_id === selectedCircularId) ??
+  const isAnalyzing = analysisState.status === "loading";
+  const hasAnalysis = analysisState.status === "success" && Boolean(analysis);
+  const priority = useMemo(() => analysis?.priority ?? {}, [analysis]);
+  const policyGaps = useMemo(
+    () => asArray(analysis?.policy_gaps).map(normalizeGap),
+    [analysis],
+  );
+  const actionPoints = useMemo(
+    () =>
+      asArray(analysis?.measurable_action_points).map((item, index) =>
+        normalizeActionPoint(item, index, priority),
+      ),
+    [analysis, priority],
+  );
+  const obligations = asArray(analysis?.obligations);
+  const similarReferences = asArray(analysis?.similar_circulars);
+  const priorityLabel = hasAnalysis ? priority.priority_label ?? "Medium" : "Pending";
+  const priorityScore = hasAnalysis ? priority.priority_score ?? 0 : null;
+  const selectedReference =
+    circulars.find((circular) => circular.circular_id === selectedReferenceId) ??
     circulars[0];
-
-  const selectedAnalysis = selectedCircular
-    ? analysisResultsByCircularId[selectedCircular.circular_id]
-    : null;
-
-  const displayedCircular = useMemo(() => {
-    if (!selectedCircular) {
-      return null;
-    }
-
-    const priority = selectedAnalysis?.priority ?? {};
-    const policyGaps = asArray(selectedAnalysis?.policy_gaps);
-    const detectedGap =
-      policyGaps.length > 0
-        ? getReadableItem(policyGaps[0], [
-            "detected_gap",
-            "gap",
-            "description",
-            "summary",
-            "requirement",
-          ])
-        : selectedCircular.detected_gap;
-
-    return {
-      ...selectedCircular,
-      summary: selectedAnalysis?.summary ?? selectedCircular.summary,
-      detected_gap: detectedGap,
-      priority_score: priority.priority_score ?? selectedCircular.priority_score,
-      priority_label: priority.priority_label ?? selectedCircular.priority_label,
-      priority_reason:
-        priority.priority_reason ?? selectedCircular.priority_reason,
-    };
-  }, [selectedAnalysis, selectedCircular]);
-
-  const localCircularActions = useMemo(
-    () =>
-      actions.filter(
-        (action) => action.circular_id === selectedCircular?.circular_id,
-      ),
-    [actions, selectedCircular],
-  );
-
-  const backendActions = useMemo(
-    () =>
-      asArray(selectedAnalysis?.measurable_action_points).map((action, index) =>
-        normalizeActionPoint(
-          action,
-          index,
-          displayedCircular ?? selectedCircular,
-          selectedAnalysis?.priority ?? {},
-        ),
-      ),
-    [displayedCircular, selectedAnalysis, selectedCircular],
-  );
-
-  const circularActions =
-    backendActions.length > 0 ? backendActions : localCircularActions;
-
   const selectedAction =
-    circularActions.find((action) => action.id === selectedActionId) ??
-    circularActions[0] ??
-    actions[0];
+    actionPoints.find((action) => action.id === selectedActionId) ??
+    actionPoints[0] ??
+    null;
 
-  const criticalCount = circulars.filter(
-    (circular) => circular.priority_label === "Critical",
-  ).length;
-  const dueSoonCount = actions.filter((action) => action.status === "In Progress").length;
-  const verifiedCount = actions.filter((action) => action.status === "Verified").length;
+  function clearAnalysis() {
+    setAnalysis(null);
+    setSelectedActionId("");
+    setAnalysisState({ status: "idle", error: "" });
+  }
 
-  const selectedAnalysisState =
-    analysisState.circularId === selectedCircular?.circular_id
-      ? analysisState
-      : {
-          status: selectedAnalysis ? "success" : "idle",
-          circularId: selectedCircular?.circular_id ?? "",
-          error: "",
-        };
+  function handleCircularTextChange(event) {
+    setCircularText(event.target.value);
+    if (analysis || analysisState.status !== "idle") {
+      clearAnalysis();
+    }
+  }
 
-  const isAnalyzing = selectedAnalysisState.status === "loading";
+  function handleFileNameChange(event) {
+    setFileName(event.target.value);
+    if (analysis || analysisState.status !== "idle") {
+      clearAnalysis();
+    }
+  }
+
+  function handleLoadDemoCircular() {
+    setCircularText(demoCircularText);
+    setFileName("rbi-new-2026-004-demo.txt");
+    clearAnalysis();
+  }
 
   async function handleAnalyzeCircular() {
-    if (!selectedCircular) {
+    if (!circularText.trim()) {
+      setAnalysisState({
+        status: "error",
+        error: "Paste a new RBI circular before running analysis.",
+      });
       return;
     }
 
-    const circularId = selectedCircular.circular_id;
-    setAnalysisState({ status: "loading", circularId, error: "" });
+    setAnalysis(null);
+    setSelectedActionId("");
+    setAnalysisState({ status: "loading", error: "" });
 
     const result = await analyzeComplianceCircular({
-      circularText: selectedCircular.text ?? selectedCircular.summary ?? "",
-      fileName: `${circularId}.txt`,
+      circularText,
+      fileName: fileName || "new-rbi-circular.txt",
       mode: "offline",
     });
 
     if (result?.ok === false) {
       setAnalysisState({
         status: "error",
-        circularId,
         error:
-          result.error ??
-          "Compliance analysis backend is unavailable. Local fallback data remains active.",
+          "Analysis could not be completed. Please confirm the backend is running and try again.",
       });
       return;
     }
 
-    setAnalysisResultsByCircularId((currentResults) => ({
-      ...currentResults,
-      [circularId]: result,
-    }));
-
-    const nextBackendActions = asArray(result?.measurable_action_points).map(
-      (action, index) =>
-        normalizeActionPoint(action, index, selectedCircular, result?.priority ?? {}),
+    const generatedActions = asArray(result?.measurable_action_points).map(
+      (item, index) => normalizeActionPoint(item, index, result?.priority ?? {}),
     );
 
-    if (nextBackendActions.length > 0) {
-      setSelectedActionId(nextBackendActions[0].id);
-    }
-
-    setAnalysisState({ status: "success", circularId, error: "" });
+    setAnalysis(result);
+    setSelectedActionId(generatedActions[0]?.id ?? "");
+    setAnalysisState({ status: "success", error: "" });
   }
 
   return (
     <Layout>
-      <section className="rounded-2xl border border-slate-800/80 bg-[#0d1a2c] p-4 shadow-[0_18px_50px_rgba(2,6,23,0.3)] xl:p-5">
+      <section className="rounded-2xl border border-slate-800/80 bg-[#0d1a2c] p-4 shadow-[0_18px_50px_rgba(2,6,23,0.26)] xl:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300">
-              Regulatory Compliance Desk
+              Member D Compliance Desk
             </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50 xl:text-2xl">
-              Regulatory Compliance Command Center
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
+              Agentic Compliance System
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Review regulatory circulars, track policy gaps, generate measurable
-              action points, assign priority, and manage evidence-based compliance
-              closure.
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-400">
+              Paste a new RBI circular, compare it with approved policy references,
+              generate gaps, assign actions, and verify evidence.
             </p>
           </div>
 
-          <div className="space-y-2 text-right">
-            <div className="rounded-full border border-emerald-400/25 bg-emerald-500/[0.12] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              Offline Mode Active
+          <div className="max-w-sm space-y-2 text-left lg:text-right">
+            <div className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/[0.12] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-emerald-300">
+              Secure Offline Review
             </div>
-            <p className="max-w-xs text-xs leading-5 text-slate-500">
-              Runs as an offline-first compliance engine using local circular data,
-              rule-based MAP generation, and rule-based priority scoring. No
-              Gemini, OpenAI, or cloud API dependency is used.
+            <p className="text-xs leading-5 text-slate-500">
+              Runs in a bank-controlled environment. Circular analysis and evidence
+              checks are performed without sending documents outside the system.
             </p>
           </div>
         </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {["Compliance Desk Ready", "Policy Library Ready", "Evidence Verifier Ready"].map(
+            (label) => (
+              <div
+                key={label}
+                className="rounded-lg border border-slate-800/80 bg-[#0a1627] px-3 py-2 text-xs font-semibold text-slate-300"
+              >
+                <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-300" />
+                {label}
+              </div>
+            ),
+          )}
+        </div>
       </section>
+
+      <section className="rounded-xl border border-sky-400/20 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.24)]">
+        <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:p-5">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+              Start Here
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-wide text-slate-50">
+              1. Add New RBI Circular
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+              Paste the new circular or advisory received by the bank. Vanguard
+              will compare it with approved reference policies and generate
+              compliance actions.
+            </p>
+
+            <div className="mt-4">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                New circular text
+              </label>
+              <textarea
+                value={circularText}
+                onChange={handleCircularTextChange}
+                rows={9}
+                placeholder="Paste circular text here... Example: Banks must report digital fraud cases within 4 hours..."
+                className="mt-2 min-h-[220px] w-full resize-y rounded-lg border border-slate-800/80 bg-[#0a1627] px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-400/60"
+              />
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Document name
+                </label>
+                <input
+                  value={fileName}
+                  onChange={handleFileNameChange}
+                  className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0a1627] px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-400/60"
+                  placeholder="new-rbi-circular.txt"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAnalyzeCircular}
+                disabled={isAnalyzing}
+                className="rounded-lg bg-sky-400 px-5 py-2.5 text-sm font-semibold text-[#06101f] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {isAnalyzing ? "Analyzing circular..." : "Analyze Circular"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLoadDemoCircular}
+                disabled={isAnalyzing}
+                className="rounded-lg border border-slate-700 bg-slate-900/60 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-sky-400/50 hover:text-sky-200 disabled:cursor-not-allowed disabled:text-slate-500"
+              >
+                Load Demo Circular
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Demo text is synthetic and used only for prototype testing.
+            </p>
+
+            {analysisState.status === "error" && (
+              <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-500/[0.08] px-4 py-3 text-sm leading-6 text-amber-100">
+                {analysisState.error}
+              </div>
+            )}
+          </div>
+
+          <aside className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+            <h3 className="text-base font-semibold text-slate-50">
+              What Vanguard checks
+            </h3>
+            <div className="mt-4 space-y-3">
+              {checkItems.map((item, index) => (
+                <div
+                  key={item}
+                  className="rounded-lg border border-slate-800/80 bg-[#0f1b2d] p-3"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Check {index + 1}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-200">{item}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <AgentWorkflow analysisReady={hasAnalysis} />
 
       <section className="grid grid-cols-2 gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
         <SummaryCard
-          label="Local Circulars"
+          label="Policy References"
           value={circulars.length}
-          detail="LOCAL RECORDS"
-        />
-        <SummaryCard
-          label="Generated MAPs"
-          value={actions.length}
-          detail="AUTOMATED"
+          detail="Ready"
           tone="emerald"
         />
         <SummaryCard
-          label="Critical Priority"
-          value={criticalCount}
-          detail="Focus"
-          tone={criticalCount > 0 ? "red" : "emerald"}
+          label="Generated Actions"
+          value={hasAnalysis ? actionPoints.length : "Pending"}
+          detail={hasAnalysis ? "Created" : "Analyze"}
+          tone={hasAnalysis ? "emerald" : "sky"}
         />
         <SummaryCard
-          label="Active Reviews"
-          value={dueSoonCount}
-          detail="Evidence"
-          tone="amber"
+          label="Priority"
+          value={
+            hasAnalysis && priorityScore !== null
+              ? `${priorityLabel} ${priorityScore}/10`
+              : "Pending"
+          }
+          detail={hasAnalysis ? "Assigned" : "Pending"}
+          tone={priorityLabel === "Critical" ? "red" : hasAnalysis ? "amber" : "sky"}
         />
         <SummaryCard
-          label="Verified Evidence"
-          value={verifiedCount}
-          detail="REVIEW"
-          tone="emerald"
+          label="Policy Gaps"
+          value={hasAnalysis ? policyGaps.length : "Pending"}
+          detail={hasAnalysis ? "Review" : "Pending"}
+          tone={hasAnalysis && policyGaps.length > 0 ? "amber" : "sky"}
+        />
+        <SummaryCard
+          label="Evidence Status"
+          value={hasAnalysis && actionPoints.length > 0 ? "Ready" : "Locked"}
+          detail="Verifier"
+          tone={hasAnalysis && actionPoints.length > 0 ? "emerald" : "sky"}
         />
       </section>
 
-      <section className="grid gap-3.5 xl:grid-cols-12">
-        <div className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)] xl:col-span-4">
-          <div className="border-b border-slate-800/80 px-5 py-4">
-            <h2 className="text-base font-semibold tracking-wide text-slate-50">
-              Local Circulars
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Local RBI-style circular records available for compliance review.
-            </p>
-          </div>
-          <div className="space-y-3 p-4">
-            {circulars.map((circular) => (
-              <button
-                key={circular.circular_id}
-                type="button"
-                onClick={() => {
-                  setSelectedCircularId(circular.circular_id);
-                  const nextAction = actions.find(
-                    (action) => action.circular_id === circular.circular_id,
-                  );
-                  if (nextAction) {
-                    setSelectedActionId(nextAction.id);
-                  }
-                }}
-                className={`w-full rounded-lg border p-4 text-left transition ${
-                  selectedCircular?.circular_id === circular.circular_id
-                    ? "border-sky-400/40 bg-sky-500/[0.10]"
-                    : "border-slate-800/80 bg-[#0a1627] hover:border-slate-700"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-semibold leading-5 text-slate-50">
-                    {circular.title}
-                  </p>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
-                      circular.priority_label,
-                    )}`}
-                  >
-                    {circular.priority_label} {circular.priority_score}/10
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-5 text-slate-400">
-                  {circular.category} - Due {circular.deadline}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
+      {!hasAnalysis ? (
+        <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] p-5 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+          <p className="text-base font-semibold text-slate-100">
+            No analysis yet. Paste a new RBI circular and click Analyze Circular.
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Evidence upload will be available after actions are generated.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.24)]">
+            <div className="border-b border-slate-800/80 px-5 py-4">
+              <h2 className="text-base font-semibold tracking-wide text-slate-50">
+                Analysis Summary
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Summary, obligations, and matching approved references.
+              </p>
+            </div>
 
-        <div className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)] xl:col-span-8">
-          <div className="border-b border-slate-800/80 px-5 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold tracking-wide text-slate-50">
-                  {selectedCircular.title}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {selectedCircular.regulator} - Issued {selectedCircular.issue_date}
+            <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Summary
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  {analysis.summary ?? "Summary was not returned for this circular."}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleAnalyzeCircular}
-                  disabled={isAnalyzing}
-                  className="rounded-lg border border-sky-400/30 bg-sky-500/[0.12] px-4 py-2 text-xs font-semibold uppercase tracking-wider text-sky-200 transition hover:border-sky-300/60 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
-                >
-                  {isAnalyzing
-                    ? "Analyzing..."
-                    : selectedAnalysis
-                      ? "Re-analyze Circular"
-                      : "Analyze Circular"}
-                </button>
-                <span
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
-                    displayedCircular.priority_label,
-                  )}`}
-                >
-                  {displayedCircular.priority_label} Priority
-                </span>
+
+              <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Similar References
+                </p>
+                <p className="mt-3 text-2xl font-semibold text-slate-50">
+                  {similarReferences.length}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {similarReferences.length > 0 ? (
+                    similarReferences.slice(0, 3).map((item, index) => (
+                      <p
+                        key={`${item.id ?? "reference"}-${index}`}
+                        className="rounded-md border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-xs leading-5 text-slate-400"
+                      >
+                        {item.id ?? item.title ?? `Reference ${index + 1}`}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-sm leading-6 text-slate-500">
+                      No similar references were returned.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="xl:col-span-2">
+                <RequirementList
+                  title="Key Obligations"
+                  items={obligations}
+                  emptyText="No obligations were returned."
+                />
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="grid gap-4 p-4 lg:grid-cols-3">
-            {selectedAnalysisState.status !== "idle" && (
-              <div className="lg:col-span-3">
-                {selectedAnalysisState.status === "loading" && (
-                  <div className="rounded-lg border border-sky-400/25 bg-sky-500/[0.08] px-4 py-3 text-sm font-medium text-sky-200">
-                    Analyzing selected circular through the offline compliance backend...
-                  </div>
-                )}
-                {selectedAnalysisState.status === "error" && (
-                  <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.08] px-4 py-3">
-                    <p className="text-sm font-semibold text-amber-200">
-                      Backend analysis unavailable
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-400">
-                      {selectedAnalysisState.error} Existing local fallback data remains visible.
-                    </p>
-                  </div>
-                )}
-                {selectedAnalysisState.status === "success" && selectedAnalysis && (
-                  <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-200">
-                    Backend compliance analysis loaded for this circular.
-                  </div>
-                )}
+          {policyGaps.length > 0 && <CircularCompare gap={policyGaps[0]} />}
+
+          <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.24)]">
+            <div className="border-b border-slate-800/80 px-5 py-4">
+              <h2 className="text-base font-semibold tracking-wide text-slate-50">
+                Policy Gaps
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Review the gaps found between the new circular and approved references.
+              </p>
+            </div>
+
+            {policyGaps.length > 0 ? (
+              <div className="grid gap-3 p-4 lg:grid-cols-2">
+                {policyGaps.map((gap) => (
+                  <article
+                    key={gap.id}
+                    className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-sky-300">{gap.id}</p>
+                        <h3 className="mt-1 text-sm font-semibold text-slate-100">
+                          {gap.department}
+                        </h3>
+                      </div>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
+                          gap.severity,
+                        )}`}
+                      >
+                        {gap.severity}
+                      </span>
+                    </div>
+
+                    <dl className="mt-4 space-y-3 text-sm leading-6">
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          New requirement
+                        </dt>
+                        <dd className="mt-1 text-slate-300">{gap.new_requirement}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Existing reference
+                        </dt>
+                        <dd className="mt-1 text-slate-400">{gap.existing_reference}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Gap detected
+                        </dt>
+                        <dd className="mt-1 text-amber-100">{gap.policy_gap}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Department/business vertical
+                        </dt>
+                        <dd className="mt-1 text-slate-300">{gap.business_vertical}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4">
+                <p className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4 text-sm leading-6 text-slate-500">
+                  No policy gaps were returned for this circular.
+                </p>
               </div>
             )}
-            <div className="lg:col-span-2">
-              <p className="text-sm leading-6 text-slate-300">
-                {displayedCircular.summary}
-              </p>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Priority reason: {displayedCircular.priority_reason}
+          </section>
+
+          <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.24)]">
+            <div className="border-b border-slate-800/80 px-5 py-4">
+              <h2 className="text-base font-semibold tracking-wide text-slate-50">
+                Department-wise Actions
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Assign actions to the responsible team and collect required evidence.
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Deadline
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-slate-50">
-                {selectedCircular.deadline}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-slate-400">
-                Priority is based on regulatory urgency, customer impact,
-                reporting obligations, and implementation deadline.
-              </p>
-            </div>
-            <div className="rounded-lg border border-amber-400/20 bg-amber-500/[0.08] p-4 lg:col-span-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
-                Detected Gap
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-200">
-                {displayedCircular.detected_gap}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
-        <div className="border-b border-slate-800/80 px-5 py-4">
-          <h2 className="text-base font-semibold tracking-wide text-slate-50">
-            Measurable Action Points
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Action points generated from circular obligations for responsible teams.
-          </p>
-        </div>
+            {actionPoints.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1160px] text-left">
+                  <thead className="border-b border-slate-800/80 bg-[#0a1627] text-[11px] uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">MAP ID</th>
+                      <th className="px-5 py-3 font-semibold">Action</th>
+                      <th className="px-5 py-3 font-semibold">Owner/Department</th>
+                      <th className="px-5 py-3 font-semibold">Deadline</th>
+                      <th className="px-5 py-3 font-semibold">Priority</th>
+                      <th className="px-5 py-3 font-semibold">Evidence Required</th>
+                      <th className="px-5 py-3 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {actionPoints.map((action) => (
+                      <tr
+                        key={action.id}
+                        onClick={() => setSelectedActionId(action.id)}
+                        className={`cursor-pointer transition ${
+                          selectedAction?.id === action.id
+                            ? "bg-sky-500/[0.08]"
+                            : "hover:bg-slate-800/30"
+                        }`}
+                      >
+                        <td className="px-5 py-4 text-xs font-semibold text-sky-300">
+                          {action.id}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-100">
+                          {action.action}
+                        </td>
+                        <td className="px-5 py-4 text-sm leading-5 text-slate-300">
+                          <span className="block">{action.owner}</span>
+                          <span className="text-xs text-slate-500">
+                            {action.department}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-sm tabular-nums text-slate-300">
+                          {action.deadline}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
+                              action.priority_label,
+                            )}`}
+                          >
+                            {action.priority_label} {action.priority_score}/10
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-xs leading-5 text-slate-400">
+                          {action.evidence_required}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300 ring-1 ring-slate-700">
+                            {action.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-4">
+                <p className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4 text-sm leading-6 text-slate-500">
+                  No actions were generated for this circular.
+                </p>
+              </div>
+            )}
+          </section>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-left">
-            <thead className="border-b border-slate-800/80 bg-[#0a1627] text-[11px] uppercase tracking-wider text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-semibold">MAP ID</th>
-                <th className="px-5 py-3 font-semibold">Action</th>
-                <th className="px-5 py-3 font-semibold">Owner</th>
-                <th className="px-5 py-3 font-semibold">Deadline</th>
-                <th className="px-5 py-3 font-semibold">Priority</th>
-                <th className="px-5 py-3 font-semibold">Evidence Required</th>
-                <th className="px-5 py-3 font-semibold">Status</th>
-                <th className="px-5 py-3 font-semibold">Reason</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80">
-              {circularActions.map((action) => (
-                <tr
-                  key={action.id}
-                  onClick={() => setSelectedActionId(action.id)}
-                  className={`cursor-pointer transition ${
-                    selectedAction?.id === action.id
-                      ? "bg-sky-500/[0.08]"
-                      : "hover:bg-slate-800/30"
-                  }`}
-                >
-                  <td className="px-5 py-4 text-xs font-semibold text-sky-300">
-                    {action.id}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-slate-100">
-                    {action.action}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-slate-300">
-                    {action.owner}
-                  </td>
-                  <td className="px-5 py-4 text-sm tabular-nums text-slate-300">
-                    {action.deadline}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
-                        action.priority_label ?? displayedCircular.priority_label,
-                      )}`}
-                    >
-                      {action.priority_label ?? displayedCircular.priority_label}{" "}
-                      {action.priority_score ?? displayedCircular.priority_score}/10
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-xs leading-5 text-slate-400">
-                    {action.evidence_required}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300 ring-1 ring-slate-700">
-                      {action.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-xs leading-5 text-slate-400">
-                    {action.reason}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <AgentWorkflow activeStep={selectedAnalysis ? 5 : 4} />
-
-      {selectedAnalysis && (
-        <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
-          <div className="border-b border-slate-800/80 px-5 py-4">
-            <h2 className="text-base font-semibold tracking-wide text-slate-50">
-              Backend Analysis Output
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Response fields returned by the local compliance analysis endpoint.
-            </p>
-          </div>
-
-          <div className="grid gap-4 p-4 lg:grid-cols-2">
-            <AnalysisList
-              title="Obligations"
-              items={selectedAnalysis.obligations}
-              candidates={["obligation", "requirement", "description", "summary"]}
-              emptyText="No obligations returned by backend."
-            />
-            <AnalysisList
-              title="Policy Gaps"
-              items={selectedAnalysis.policy_gaps}
-              candidates={["gap", "detected_gap", "description", "summary"]}
-              emptyText="No policy gaps returned by backend."
-            />
-            <AnalysisList
-              title="Workflow"
-              items={selectedAnalysis.workflow}
-              candidates={["step", "name", "task", "description", "status"]}
-              emptyText="No workflow steps returned by backend."
-            />
-            <AnalysisList
-              title="Engine Notes"
-              items={selectedAnalysis.engine_notes}
-              candidates={["note", "message", "description", "summary"]}
-              emptyText="No engine notes returned by backend."
-            />
-          </div>
-        </section>
+          {actionPoints.length > 0 ? (
+            <EvidenceUpload selectedAction={selectedAction} />
+          ) : (
+            <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] p-5 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+              <p className="text-sm font-semibold text-slate-100">
+                Evidence upload will be available after actions are generated.
+              </p>
+            </section>
+          )}
+        </>
       )}
 
-      <section className="grid gap-3.5 xl:grid-cols-2">
-        <CircularCompare circular={displayedCircular} />
-        <EvidenceUpload selectedAction={selectedAction} />
+      <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold tracking-wide text-slate-50">
+              Policy Reference Library
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Approved baseline circulars and policy references used for comparison.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReferencesOpen((open) => !open)}
+            className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
+          >
+            {referencesOpen ? "Hide Library" : "Show Library"}
+          </button>
+        </div>
+
+        {referencesOpen && (
+          <div className="grid gap-4 p-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+            <div className="space-y-3">
+              {circulars.map((circular) => (
+                <article
+                  key={circular.circular_id}
+                  className={`rounded-lg border p-4 ${
+                    selectedReference?.circular_id === circular.circular_id
+                      ? "border-sky-400/40 bg-sky-500/[0.10]"
+                      : "border-slate-800/80 bg-[#0a1627]"
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-300">
+                    Baseline Reference
+                  </p>
+                  <h3 className="mt-1 text-sm font-semibold leading-5 text-slate-50">
+                    {circular.title}
+                  </h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {circular.category} - {circular.regulator}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReferenceId(circular.circular_id)}
+                    className="mt-3 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
+                  >
+                    View Reference
+                  </button>
+                </article>
+              ))}
+            </div>
+
+            <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Reference Preview
+              </p>
+              <h3 className="mt-2 text-base font-semibold text-slate-50">
+                {selectedReference?.title ?? "No reference selected"}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {selectedReference?.regulator ?? "Reserve Bank of India"} -{" "}
+                {selectedReference?.issue_date ?? "Reference"}
+              </p>
+              <p className="mt-4 text-sm leading-6 text-slate-300">
+                {selectedReference?.summary ??
+                  "Select a baseline reference to preview it."}
+              </p>
+              <p className="mt-4 max-h-48 overflow-auto rounded-md border border-slate-800/80 bg-[#0f1b2d] p-3 text-sm leading-6 text-slate-500">
+                {selectedReference?.text ??
+                  "Reference text will appear here when available."}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
     </Layout>
   );

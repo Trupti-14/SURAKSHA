@@ -1,81 +1,58 @@
-const steps = [
-  {
-    name: "Local Circular",
-    detail: "Circular record received for compliance review.",
-  },
-  {
-    name: "Scout Parser",
-    detail: "Key obligations, deadlines, owners, and evidence needs are identified.",
-  },
-  {
-    name: "Delta Check",
-    detail: "New requirements are reviewed against existing policy expectations.",
-  },
-  {
-    name: "MAP Generator",
-    detail: "Measurable action points are generated for responsible teams.",
-  },
-  {
-    name: "Priority Score",
-    detail:
-      "Priority is assigned using urgency, risk, customer impact, and deadline factors.",
-  },
-  {
-    name: "Evidence Verify",
-    detail: "Evidence submission is tracked for compliance verification.",
-  },
-];
+const steps = ["Add Circular", "Analyze", "Review Gaps", "Assign Actions", "Verify Evidence"];
 
-export default function AgentWorkflow({ activeStep = 5 }) {
+export default function AgentWorkflow({ analysisReady = false }) {
   return (
-    <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] shadow-[0_18px_44px_rgba(2,6,23,0.28)]">
-      <div className="border-b border-slate-800/80 px-5 py-4">
-        <h2 className="text-base font-semibold tracking-wide text-slate-50">
-          Compliance Review Workflow
-        </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Tracks the circular from review to action generation, priority assessment, and evidence closure.
-        </p>
-      </div>
+    <section className="rounded-xl border border-slate-800/80 bg-[#0f1b2d] px-4 py-3 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide text-slate-50">
+            Review Progress
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Follow the circular from intake to evidence verification.
+          </p>
+        </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
-        {steps.map((step, index) => {
-          const completed = index < activeStep;
-          const ready = index === activeStep;
-          const status = completed ? "Completed" : ready ? "Ready" : "Pending Evidence";
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
+          {steps.map((step, index) => {
+            const complete = analysisReady && index < 4;
+            const active = (!analysisReady && index === 0) || (analysisReady && index === 4);
+            const pending = !complete && !active;
 
-          return (
-            <div
-              key={step.name}
-              className={`min-h-[112px] rounded-lg border p-3 ${
-                completed || ready
-                  ? "border-sky-400/30 bg-sky-500/[0.10]"
-                  : "border-slate-800 bg-[#0a1627]"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
-                    completed || ready
-                      ? "bg-sky-400 text-[#06101f]"
-                      : "bg-slate-800 text-slate-500"
+            return (
+              <div key={step} className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                    complete
+                      ? "border-emerald-400/30 bg-emerald-500/[0.10] text-emerald-200"
+                      : active
+                        ? "border-sky-400/35 bg-sky-500/[0.12] text-sky-200"
+                        : "border-slate-800 bg-[#0a1627] text-slate-500"
                   }`}
                 >
-                  {index + 1}
-                </span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  {status}
-                </span>
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      complete
+                        ? "bg-emerald-300"
+                        : active
+                          ? "bg-sky-300"
+                          : "bg-slate-600"
+                    }`}
+                  />
+                  <span>{step}</span>
+                  {pending && (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-600">
+                      Pending
+                    </span>
+                  )}
+                </div>
+                {index < steps.length - 1 && (
+                  <span className="hidden text-slate-700 sm:inline">/</span>
+                )}
               </div>
-              <p className="mt-4 text-sm font-semibold leading-snug text-slate-100">
-                {step.name}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {step.detail}
-              </p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </section>
   );

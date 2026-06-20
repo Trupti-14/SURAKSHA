@@ -54,8 +54,9 @@ const routeHeaders = {
     subtitle: "Digital document authenticity, ELA heatmap, and metadata analysis",
   },
   "/compliance": {
-    title: "Regulatory Compliance Command Center",
-    subtitle: "Offline RBI circular tracking, MAP generation, and evidence verification",
+    title: "Agentic Compliance System",
+    subtitle:
+      "Paste a new RBI circular, compare it with approved policy references, generate gaps, assign actions, and verify evidence.",
   },
   "/admin": {
     title: "Security & Administration",
@@ -74,6 +75,18 @@ export default function Layout({ children, selectedSession }) {
       (path) => pathname === path || pathname.startsWith(`${path}/`),
     ) ?? "/dashboard";
   const header = routeHeaders[routeKey];
+  const statusBadges =
+    routeKey === "/compliance"
+      ? [
+          { label: "Compliance Desk Ready", tone: "emerald" },
+          { label: "Policy Library Ready", tone: "emerald" },
+          { label: "Evidence Verifier Ready", tone: "emerald" },
+        ]
+      : [
+          { label: "System Ready", tone: "emerald" },
+          { label: "Data Store Ready", tone: "emerald" },
+          { label: "Risk Engine Ready", tone: riskProfile.tone },
+        ];
 
   const navItems = [
     { label: "Trust Dashboard", path: "/dashboard" },
@@ -156,11 +169,7 @@ export default function Layout({ children, selectedSession }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {[
-              { label: "Console Online", tone: "emerald" },
-              { label: "Redis Ready", tone: "emerald" },
-              { label: "Behavioral Engine", tone: riskProfile.tone },
-            ].map((item) => (
+            {statusBadges.map((item) => (
               <div
                 key={item.label}
                 className="flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/50 px-3 py-1.5 text-xs font-medium text-slate-300"
