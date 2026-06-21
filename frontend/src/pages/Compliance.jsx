@@ -6,6 +6,7 @@ import Layout from "../components/ui/Layout.jsx";
 import {
   addComplianceReference,
   analyzeComplianceCircular,
+  deleteComplianceReference,
   fetchComplianceCirculars,
   uploadComplianceReference,
 } from "../lib/compliance-api.js";
@@ -112,23 +113,36 @@ function getTextField(item, candidates, fallback) {
 }
 
 function normalizeCircularItem(item, index) {
+  const previewText = item.preview_text ?? item.display_text ?? "";
+  const contentText = item.content ?? item.text ?? item.summary ?? "";
+  const summaryText =
+    item.summary ?? item.normalized_summary ?? item.content_excerpt ?? previewText;
+
   return {
     circular_id: item.circular_id ?? item.id ?? `REF-${index + 1}`,
     title: item.title ?? item.id ?? `Policy Reference ${index + 1}`,
     regulator: item.regulator ?? item.primary_regulator ?? "Reserve Bank of India",
     issue_date: item.issue_date ?? "Reference",
     category: item.category ?? "Regulatory Compliance",
-    domain: item.domain ?? "general_compliance",
+    domain: item.domain ?? item.metadata?.domain ?? "general_compliance",
     source_type: item.source_type ?? item.source ?? "Reference",
     file_name: item.file_name ?? "",
     stored_at: item.stored_at ?? "",
     summary:
-      item.summary ??
-      item.normalized_summary ??
-      item.content_excerpt ??
-      "Approved baseline reference available for comparison.",
-    text: item.text ?? item.content ?? item.summary ?? "",
+      summaryText || "Approved baseline reference available for comparison.",
+    text: previewText || contentText,
+    content: item.content ?? "",
+    preview_text: previewText,
+    display_text: item.display_text ?? previewText,
+    source_status: item.source_status ?? item.metadata?.source_status ?? "",
+    withdrawn: Boolean(
+      item.withdrawn || item.metadata?.withdrawn || item.source_status,
+    ),
   };
+}
+
+function isUserReference(circularId) {
+  return typeof circularId === "string" && circularId.startsWith("USER-REF-");
 }
 
 function normalizeActionPoint(item, index, priority) {
@@ -274,6 +288,11 @@ export default function Compliance() {
     status: "idle",
     message: "",
   });
+  const [referenceDeleteState, setReferenceDeleteState] = useState({
+    status: "idle",
+    message: "",
+    circularId: "",
+  });
   const [referenceUploadFile, setReferenceUploadFile] = useState(null);
   const [referenceFileInputKey, setReferenceFileInputKey] = useState(0);
   const [circularText, setCircularText] = useState("");
@@ -366,6 +385,11 @@ export default function Compliance() {
   const selectedReference =
     circulars.find((circular) => circular.circular_id === selectedReferenceId) ??
     circulars[0];
+  const selectedReferencePreview =
+    selectedReference?.preview_text ||
+    selectedReference?.display_text ||
+    selectedReference?.text ||
+    "";
   const selectedAction =
     actionPoints.find((action) => action.id === selectedActionId) ??
     actionPoints[0] ??
@@ -436,7 +460,6 @@ export default function Compliance() {
       setReferenceForm((current) => ({
         ...current,
         fileName: file.name,
-        title: current.title || file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
       }));
       setReferenceSaveState({ status: "idle", message: "" });
       return;
@@ -449,7 +472,6 @@ export default function Compliance() {
         ...current,
         circularText: text,
         fileName: file.name,
-        title: current.title || file.name.replace(/\.txt$/i, "").replace(/[-_]+/g, " "),
       }));
       setReferenceSaveState({ status: "idle", message: "" });
     } catch {
@@ -468,10 +490,10 @@ export default function Compliance() {
     const referenceText = referenceForm.circularText.trim();
     const isPdfUpload = referenceUploadFile?.name?.toLowerCase().endsWith(".pdf");
 
-    if (!title || !domain || (!referenceText && !isPdfUpload)) {
+    if (!domain || (!referenceText && !isPdfUpload)) {
       setReferenceSaveState({
         status: "error",
-        message: "Reference title, domain, and circular text or PDF file are required.",
+        message: "Reference domain and circular text or PDF file are required.",
       });
       return;
     }
@@ -519,6 +541,45 @@ export default function Compliance() {
       message: isPdfUpload
         ? "PDF extracted and reference circular added to Policy Reference Library."
         : "Reference circular added to Policy Reference Library.",
+    });
+    await loadPolicyReferences();
+  }
+
+  async function handleDeleteReference(circular) {
+    if (!isUserReference(circular?.circular_id)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this uploaded reference? This will remove it from future comparisons.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setReferenceDeleteState({
+      status: "loading",
+      message: "",
+      circularId: circular.circular_id,
+    });
+
+    const result = await deleteComplianceReference(circular.circular_id);
+
+    if (result?.ok === false) {
+      setReferenceDeleteState({
+        status: "error",
+        message:
+          result.error ||
+          "Reference circular could not be deleted. Please try again.",
+        circularId: circular.circular_id,
+      });
+      return;
+    }
+
+    setReferenceDeleteState({
+      status: "success",
+      message: "Reference circular deleted from Policy Reference Library.",
+      circularId: "",
     });
     await loadPolicyReferences();
   }
@@ -1126,6 +1187,20 @@ export default function Compliance() {
           </div>
         )}
 
+        {referenceDeleteState.message && (
+          <div className="border-b border-slate-800/80 px-5 py-3">
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm leading-6 ${
+                referenceDeleteState.status === "success"
+                  ? "border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-100"
+                  : "border-amber-400/25 bg-amber-500/[0.08] text-amber-100"
+              }`}
+            >
+              {referenceDeleteState.message}
+            </div>
+          </div>
+        )}
+
         {referencesOpen && (
           <div className="grid gap-4 p-4 xl:grid-cols-[420px_minmax(0,1fr)]">
             <div className="space-y-3">
@@ -1147,13 +1222,35 @@ export default function Compliance() {
                   <p className="mt-2 text-xs leading-5 text-slate-500">
                     {circular.domain} / {circular.category} - {circular.regulator}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedReferenceId(circular.circular_id)}
-                    className="mt-3 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
-                  >
-                    View Reference
-                  </button>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedReferenceId(circular.circular_id)}
+                      className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
+                    >
+                      View Reference
+                    </button>
+                    {isUserReference(circular.circular_id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReference(circular)}
+                        disabled={
+                          referenceDeleteState.status === "loading" &&
+                          referenceDeleteState.circularId === circular.circular_id
+                        }
+                        className="rounded-lg border border-rose-500/30 bg-rose-500/[0.06] px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:border-rose-400/60 hover:bg-rose-500/[0.10] disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900/40 disabled:text-slate-500"
+                      >
+                        {referenceDeleteState.status === "loading" &&
+                        referenceDeleteState.circularId === circular.circular_id
+                          ? "Deleting..."
+                          : "Delete"}
+                      </button>
+                    ) : (
+                      <span className="rounded-full border border-slate-700 bg-slate-900/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Locked
+                      </span>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -1171,13 +1268,19 @@ export default function Compliance() {
               </p>
               <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 {selectedReference?.domain ?? "general_compliance"}
+                {(selectedReference?.withdrawn ||
+                  selectedReference?.source_status) && (
+                  <span className="ml-2 rounded-full border border-amber-400/25 bg-amber-500/[0.08] px-2 py-0.5 text-[10px] text-amber-200">
+                    {selectedReference?.source_status || "Withdrawn / archived"}
+                  </span>
+                )}
               </p>
               <p className="mt-4 text-sm leading-6 text-slate-300">
                 {selectedReference?.summary ??
                   "Select a baseline reference to preview it."}
               </p>
               <p className="mt-4 max-h-48 overflow-auto rounded-md border border-slate-800/80 bg-[#0f1b2d] p-3 text-sm leading-6 text-slate-500">
-                {selectedReference?.text ??
+                {selectedReferencePreview ||
                   "Reference text will appear here when available."}
               </p>
             </div>

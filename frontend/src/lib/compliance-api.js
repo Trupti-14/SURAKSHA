@@ -137,6 +137,14 @@ export async function uploadComplianceReference({ title, domain, category, file 
   );
 }
 
+export async function deleteComplianceReference(circularId) {
+  return requestComplianceJson(
+    `/api/compliance/references/${encodeURIComponent(circularId)}`,
+    { method: "DELETE" },
+    "Reference circular could not be deleted. Please confirm the backend is running and try again.",
+  );
+}
+
 export async function fetchComplianceActions() {
   return requestComplianceJson(
     "/api/compliance/actions",

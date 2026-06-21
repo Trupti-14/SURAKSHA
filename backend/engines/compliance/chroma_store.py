@@ -17,6 +17,7 @@ except Exception:
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BACKEND_DIR / "data"
 CHROMA_DIR = DATA_DIR / "chroma_db"
+CIRCULARS_DIR = DATA_DIR / "circulars"
 COMPLIANCE_DIR = DATA_DIR / "compliance"
 FALLBACK_MEMORY_PATH = COMPLIANCE_DIR / "regulatory_memory.json"
 COLLECTION_NAME = "rbi_regulatory_memory"
@@ -28,6 +29,35 @@ _client_mode = None
 _last_chroma_error = None
 
 CONTROL_VERBS = (
+    "shall",
+    "must",
+    "should",
+    "ensure",
+    "maintain",
+    "submit",
+    "report",
+    "notify",
+    "retain",
+    "monitor",
+    "review",
+    "audit",
+    "escalate",
+    "test",
+    "approve",
+    "control",
+    "policy",
+    "framework",
+    "risk",
+    "incident",
+    "access",
+    "logs",
+    "bcp",
+    "dr",
+    "ciso",
+    "soc",
+)
+
+ACTION_VERBS = (
     "shall",
     "must",
     "should",
@@ -66,7 +96,222 @@ NOISY_LINE_PHRASES = (
     "table of contents",
     "master circulars repealed",
     "list of repealed circulars",
+    "hindi is easy",
+    "hindi is very easy",
 )
+
+HEADER_FOOTER_PHRASES = (
+    "reserve bank of india",
+    "central office",
+    "department of regulation",
+    "department of supervision",
+    "shahid bhagat singh",
+    "mumbai",
+    "rbi.org.in",
+    "@rbi.org.in",
+    "email",
+    "e-mail",
+    "telephone",
+    "phone",
+    "fax",
+)
+
+TITLE_SUBJECT_PATTERNS = (
+    r"\bmaster direction\b[^\n]*",
+    r"\bmaster circular\b[^\n]*",
+    r"\bdraft master direction\b.*",
+    r"\bsubject\s*[:\-]\s*(.+)",
+    r"\btitle\s*[:\-]\s*(.+)",
+)
+
+TITLE_KEYWORDS = (
+    "master direction",
+    "master circular",
+    "directions",
+    "framework",
+    "requirement for",
+    "requirements for",
+    "inclusion of",
+    "information technology governance",
+    "risk, controls",
+    "financial information provider",
+    "account aggregator",
+    "payment activity",
+    "cyber security",
+    "outsourcing",
+)
+
+GENERIC_TITLE_VALUES = {
+    "reference",
+    "policy reference",
+    "approved policy reference",
+    "circular",
+    "rbi circular",
+    "rbi reference",
+    "reference circular",
+    "uploaded reference",
+    "uploaded circular",
+    "document",
+    "pdf",
+    "untitled",
+}
+
+METADATA_LINE_KEYS = {
+    "circular_id",
+    "title",
+    "category",
+    "issue_date",
+    "regulator",
+    "effective_from",
+    "effective_date",
+    "status",
+    "source_type",
+}
+
+VALID_REFERENCE_DOMAINS = {
+    "digital_fraud",
+    "it_outsourcing",
+    "kyc_aml",
+    "cyber_incident",
+    "digital_payment",
+    "mobile_banking",
+    "digital_lending",
+    "bcp_drp",
+    "audit_governance",
+    "general_compliance",
+}
+
+DOMAIN_KEYWORDS = (
+    (
+        "audit_governance",
+        (
+            "it governance",
+            "information technology governance",
+            "ciso",
+            "soc",
+            "audit trail",
+            "audit trails",
+            "va/pt",
+            "vapt",
+            "cyber security policy",
+            "information security policy",
+            "bcp",
+            "business continuity",
+            "dr",
+            "disaster recovery",
+            "is audit",
+            "controls and assurance",
+            "risk controls and assurance",
+            "assurance practices",
+        ),
+    ),
+    (
+        "cyber_incident",
+        (
+            "cert-in",
+            "cyber incident",
+            "incident response",
+            "security logs",
+            "containment",
+            "root cause",
+            "soc escalation",
+            "incident reporting",
+        ),
+    ),
+    (
+        "digital_fraud",
+        (
+            "digital fraud",
+            "customer notification",
+            "mule account",
+            "fraud monitoring report",
+            "payment fraud",
+            "fraud reporting",
+            "transaction logs",
+        ),
+    ),
+    (
+        "kyc_aml",
+        (
+            "kyc",
+            "aml",
+            "beneficial owner",
+            "suspicious account",
+            "suspicious transaction",
+            "mule account",
+        ),
+    ),
+    (
+        "it_outsourcing",
+        (
+            "outsourcing",
+            "vendor",
+            "third party",
+            "third-party",
+            "cloud",
+            "service provider",
+            "subcontractor",
+        ),
+    ),
+    (
+        "digital_payment",
+        (
+            "payment system",
+            "pso",
+            "upi",
+            "ppi",
+            "payment aggregator",
+            "payment gateway",
+            "settlement",
+            "clearing corporation",
+            "ccil",
+            "financial information provider",
+            "account aggregator",
+        ),
+    ),
+    (
+        "mobile_banking",
+        (
+            "mobile banking",
+            "mobile app",
+            "device binding",
+        ),
+    ),
+    (
+        "digital_lending",
+        (
+            "digital lending",
+            "lending service provider",
+            "loan app",
+            "lsp",
+        ),
+    ),
+    (
+        "bcp_drp",
+        (
+            "business continuity",
+            "disaster recovery",
+            "rto",
+            "rpo",
+            "dr drill",
+            "bcp",
+            "drp",
+        ),
+    ),
+)
+
+DOMAIN_CATEGORIES = {
+    "audit_governance": "IT Governance / Risk / Controls / Assurance",
+    "cyber_incident": "Cyber Incident Response / CERT-In / SOC Escalation",
+    "digital_fraud": "Digital Fraud / Customer Notification / Monitoring",
+    "kyc_aml": "KYC / AML / Suspicious Account Monitoring",
+    "it_outsourcing": "IT Outsourcing / Vendor Risk / Third-Party Controls",
+    "digital_payment": "Payment System Operator / RBI Approval / Payment Activity Transfer",
+    "mobile_banking": "Mobile Banking / App Security / Device Controls",
+    "digital_lending": "Digital Lending / LSP / Loan App Controls",
+    "bcp_drp": "Business Continuity / Disaster Recovery / Resilience Testing",
+    "general_compliance": "Regulatory Compliance",
+}
 
 
 def _utc_now():
@@ -95,9 +340,41 @@ def _content_excerpt(content: str, limit: int = 220) -> str:
     return text[:limit]
 
 
+def _is_user_reference_id(circular_id: str | None) -> bool:
+    return bool(circular_id and str(circular_id).startswith("USER-REF-"))
+
+
+def _has_withdrawn_marker(text: str) -> bool:
+    return bool(re.search(r"\b(withdrawn|repealed|superseded|archived)\b", text or "", flags=re.I))
+
+
+def source_status_for_text(text: str) -> str:
+    return "Withdrawn / archived" if _has_withdrawn_marker(text) else ""
+
+
+def _looks_like_metadata_line(line: str) -> bool:
+    if ":" not in (line or ""):
+        return False
+    key = line.split(":", 1)[0].strip().lower()
+    return key in METADATA_LINE_KEYS
+
+
+def _looks_like_subject_line(line: str) -> bool:
+    return bool(re.match(r"^\s*(?:subject|title)\s*[:\-]", line or "", flags=re.I))
+
+
+def _looks_like_salutation_line(line: str) -> bool:
+    return bool(re.match(r"^\s*(?:madam|dear sir|sir|madam\s*/\s*dear sir)\s*,?\s*$", line or "", flags=re.I))
+
+
 def _has_control_verb(line: str) -> bool:
     lower = (line or "").lower()
     return any(re.search(rf"\b{re.escape(verb)}\b", lower) for verb in CONTROL_VERBS)
+
+
+def _has_action_verb(line: str) -> bool:
+    lower = (line or "").lower()
+    return any(re.search(rf"\b{re.escape(verb)}\b", lower) for verb in ACTION_VERBS)
 
 
 def _looks_like_page_number(line: str) -> bool:
@@ -121,7 +398,29 @@ def _mostly_abbreviations(line: str) -> bool:
             and not token.isdigit()
         )
     )
-    return abbreviation_count / max(1, len(tokens)) >= 0.65 and not _has_control_verb(line)
+    natural_word_count = sum(1 for token in tokens if token.lower() == token and len(token) >= 4)
+    return abbreviation_count / max(1, len(tokens)) >= 0.65 and natural_word_count < 3
+
+
+def _looks_like_toc_line(line: str) -> bool:
+    text = (line or "").strip()
+    return bool(re.search(r"\.{3,}\s*\d{1,4}$", text) or re.match(r"^\d+(?:\.\d+)*\s+\S+.*\s+\d{1,4}$", text))
+
+
+def _looks_like_broken_header(line: str) -> bool:
+    text = line or ""
+    lower = text.lower()
+    if "�" in text or "â" in text:
+        return not _has_control_verb(text)
+    non_ascii_count = sum(1 for char in text if ord(char) > 127)
+    return non_ascii_count >= max(6, len(text) // 3) and not _has_control_verb(text)
+
+
+def _looks_like_rbi_header_footer(line: str) -> bool:
+    lower = (line or "").lower()
+    if not any(phrase in lower for phrase in HEADER_FOOTER_PHRASES):
+        return False
+    return len(line or "") <= 180 and not _has_control_verb(line)
 
 
 def _looks_like_reference_table_row(line: str) -> bool:
@@ -154,7 +453,19 @@ def _is_noisy_reference_line(line: str) -> bool:
     lower = normalized.lower()
     if not normalized:
         return False
+    if _looks_like_metadata_line(normalized):
+        return True
+    if _looks_like_salutation_line(normalized):
+        return True
+    if _looks_like_subject_line(normalized):
+        return True
     if any(phrase in lower for phrase in NOISY_LINE_PHRASES):
+        return True
+    if _looks_like_broken_header(normalized):
+        return True
+    if _looks_like_rbi_header_footer(normalized):
+        return True
+    if _looks_like_toc_line(normalized):
         return True
     if _looks_like_page_number(normalized):
         return True
@@ -235,6 +546,294 @@ def clean_reference_text(text: str) -> str:
     return cleaned
 
 
+def _is_hash_like_title(title: str | None) -> bool:
+    text = (title or "").strip()
+    if not text:
+        return True
+    lower = text.lower()
+    if any(keyword in lower for keyword in TITLE_KEYWORDS):
+        return False
+    if text.startswith("USER-REF-"):
+        return True
+    compact = re.sub(r"[^A-Za-z0-9]", "", text)
+    if len(compact) >= 24:
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9]*", text)
+        natural_words = sum(1 for token in tokens if token.isalpha() and token.lower() == token and len(token) >= 4)
+        digit_ratio = sum(char.isdigit() for char in compact) / max(1, len(compact))
+        upper_ratio = sum(char.isupper() for char in compact) / max(1, len(compact))
+        has_long_hash_token = any(
+            len(token) >= 20 and any(char.isdigit() for char in token)
+            for token in re.findall(r"[A-Za-z0-9]+", text)
+        )
+        return has_long_hash_token or (
+            natural_words < 3 and (digit_ratio >= 0.12 or upper_ratio >= 0.72)
+        )
+    return False
+
+
+def _is_generic_title(title: str | None) -> bool:
+    text = re.sub(r"\.[A-Za-z0-9]{2,5}$", "", (title or "").strip())
+    normalized = re.sub(r"[_\-]+", " ", text)
+    normalized = re.sub(r"\s+", " ", normalized).strip(" .:-").lower()
+    if not normalized:
+        return True
+    if normalized in GENERIC_TITLE_VALUES:
+        return True
+    if normalized.startswith("rbi circular") and len(normalized) <= 35:
+        return True
+    if normalized.startswith("rbi reference") and len(normalized) <= 35:
+        return True
+    return False
+
+
+def _readable_user_title(title: str | None) -> bool:
+    text = (title or "").strip()
+    if not text or _is_hash_like_title(text) or _is_generic_title(text):
+        return False
+    return bool(re.search(r"[A-Za-z]", text))
+
+
+def _title_from_line(line: str) -> str:
+    title = re.sub(r"^\s*(?:subject|title)\s*[:\-]\s*", "", line or "", flags=re.I)
+    title = re.sub(r"^\s*(?:madam|dear sir|madam\s*/\s*dear sir)\s*,?\s*", "", title, flags=re.I)
+    title = re.sub(r"\s+", " ", title).strip(" :-")
+    return title[:180]
+
+
+def _title_candidate_score(candidate: str) -> int:
+    cleaned = _title_from_line(candidate)
+    lower = cleaned.lower()
+    if (
+        len(cleaned) < 12
+        or _is_hash_like_title(cleaned)
+        or _is_generic_title(cleaned)
+        or _is_noisy_reference_line(cleaned)
+    ):
+        return 0
+
+    score = 0
+    for index, keyword in enumerate(TITLE_KEYWORDS):
+        if keyword in lower:
+            score += 40 - min(index, 20)
+    if re.search(r"\b(master|framework|directions?|requirement|inclusion)\b", lower):
+        score += 15
+    if len(cleaned.split()) >= 5:
+        score += 8
+    if _has_control_verb(cleaned):
+        score -= 10
+    if len(cleaned) > 220:
+        score -= 20
+    return score
+
+
+def _title_candidates_from_lines(content: str) -> list[str]:
+    raw_lines = [re.sub(r"\s+", " ", line).strip() for line in (content or "").splitlines()]
+    lines = [line for line in raw_lines if line]
+    candidates = []
+
+    def continuation(line: str) -> bool:
+        lower = (line or "").lower()
+        if not line or _has_control_verb(line) or _is_noisy_reference_line(line):
+            return False
+        if lower.startswith(("the reserve bank", "please refer", "in exercise", "all regulated entities")):
+            return False
+        return len(line) <= 120 and not line.endswith(".")
+
+    for index, line in enumerate(lines):
+        lower = line.lower()
+        if "madam" in lower or "dear sir" in lower:
+            for candidate_index in range(index + 1, min(index + 8, len(lines))):
+                candidate = lines[candidate_index]
+                candidates.append(candidate)
+                if any(keyword in candidate.lower() for keyword in TITLE_KEYWORDS):
+                    joined_lines = [candidate]
+                    for follow in lines[candidate_index + 1 : candidate_index + 3]:
+                        if continuation(follow):
+                            joined_lines.append(follow)
+                        else:
+                            break
+                    candidates.append(" ".join(joined_lines))
+
+    for index, line in enumerate(lines):
+        lowered = line.lower()
+        if _looks_like_subject_line(line) or any(keyword in lowered for keyword in TITLE_KEYWORDS):
+            candidates.append(line)
+            if index + 1 < len(lines) and continuation(lines[index + 1]):
+                candidates.append(f"{line} {lines[index + 1]}")
+
+    return candidates
+
+
+def _filename_title(file_name: str | None) -> str:
+    if not file_name:
+        return ""
+    stem = Path(str(file_name)).stem
+    title = re.sub(r"[_\-]+", " ", stem)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+
+def derive_reference_title(
+    content: str,
+    uploaded_file_name: str | None = None,
+    user_title: str | None = None,
+    fallback: str = "Approved Policy Reference",
+) -> str:
+    if _readable_user_title(user_title):
+        return str(user_title).strip()
+
+    scored_candidates = []
+
+    for pattern in TITLE_SUBJECT_PATTERNS:
+        match = re.search(pattern, content or "", flags=re.I)
+        if match:
+            candidate = match.group(1) if match.lastindex else match.group(0)
+            candidate = _title_from_line(candidate)
+            score = _title_candidate_score(candidate)
+            if score:
+                scored_candidates.append((score + 10, candidate))
+
+    for candidate in _title_candidates_from_lines(content or ""):
+        cleaned = _title_from_line(candidate)
+        score = _title_candidate_score(cleaned)
+        if score:
+            scored_candidates.append((score, cleaned))
+
+    if scored_candidates:
+        scored_candidates.sort(key=lambda item: (item[0], len(item[1])), reverse=True)
+        return scored_candidates[0][1]
+
+    for line in (content or "").splitlines():
+        cleaned = _title_from_line(line)
+        lower = cleaned.lower()
+        if (
+            len(cleaned) >= 24
+            and not _is_noisy_reference_line(cleaned)
+            and not _is_hash_like_title(cleaned)
+            and not _is_generic_title(cleaned)
+            and any(term in lower for term in ("master direction", "master circular", "framework", "governance", "policy", "risk", "controls", "inclusion of"))
+        ):
+            return cleaned
+
+    file_title = _filename_title(uploaded_file_name)
+    if _readable_user_title(file_title):
+        return file_title
+
+    return fallback
+
+
+def _readable_title(title: str | None, content: str, circular_id: str | None = None) -> str:
+    if _readable_user_title(title):
+        return title.strip()
+    fallback = "Approved Policy Reference"
+    if circular_id and not _is_hash_like_title(circular_id):
+        fallback = str(circular_id)
+    return derive_reference_title(content, user_title=title, fallback=fallback)
+
+
+def infer_reference_domain(clean_text: str, user_domain: str | None = None) -> str:
+    selected = (user_domain or "").strip()
+    if selected in VALID_REFERENCE_DOMAINS and selected != "general_compliance":
+        return selected
+
+    lower = (clean_text or "").lower()
+    scored = []
+    for order, (domain, keywords) in enumerate(DOMAIN_KEYWORDS):
+        score = sum(1 for keyword in keywords if keyword in lower)
+        if score:
+            scored.append((score, -order, domain))
+
+    if not scored:
+        return "general_compliance"
+
+    scored.sort(reverse=True)
+    return scored[0][2]
+
+
+def _readable_category(category: str | None) -> bool:
+    text = (category or "").strip()
+    if not text:
+        return False
+    if _is_hash_like_title(text) or _is_generic_title(text):
+        return False
+    return len(text) >= 4 and bool(re.search(r"[A-Za-z]", text))
+
+
+def infer_reference_category(clean_text: str, domain: str, user_category: str | None = None) -> str:
+    if _readable_category(user_category):
+        return str(user_category).strip()
+
+    lower = (clean_text or "").lower()
+    if domain == "digital_payment" and any(
+        term in lower for term in ("account aggregator", "financial information provider", "clearing corporation", "ccil")
+    ):
+        return "Account Aggregator / Financial Information Provider / RBI Approval"
+    return DOMAIN_CATEGORIES.get(domain, DOMAIN_CATEGORIES["general_compliance"])
+
+
+def _useful_display_line(line: str) -> bool:
+    text = (line or "").strip()
+    if len(text) < 25:
+        return False
+    lower = text.lower()
+    if _looks_like_subject_line(text) or _looks_like_salutation_line(text):
+        return False
+    if any(keyword in lower for keyword in TITLE_KEYWORDS) and not _has_action_verb(text):
+        return False
+    if _is_noisy_reference_line(text):
+        return False
+    return _has_control_verb(text) or len(text) >= 80
+
+
+def _display_block_text(block: str) -> str:
+    selected_lines = []
+    started_policy_text = False
+
+    for line in block.splitlines():
+        line = line.strip()
+        lower = line.lower()
+        if not line or _looks_like_subject_line(line) or _looks_like_salutation_line(line):
+            continue
+        if any(keyword in lower for keyword in TITLE_KEYWORDS) and not _has_action_verb(line):
+            continue
+        if not started_policy_text:
+            if _has_action_verb(line) or (len(line) >= 80 and not _is_noisy_reference_line(line)):
+                started_policy_text = True
+            else:
+                continue
+        if not _is_noisy_reference_line(line):
+            selected_lines.append(line)
+
+    return re.sub(r"\s+", " ", " ".join(selected_lines)).strip()
+
+
+def display_reference_text(content: str, limit: int = 2200) -> str:
+    cleaned = clean_reference_text(content or "")
+    if not cleaned:
+        return ""
+
+    display_lines = []
+    for block in re.split(r"\n\s*\n+", cleaned):
+        block = _display_block_text(block)
+        if _useful_display_line(block):
+            display_lines.append(block)
+        if len("\n\n".join(display_lines)) >= limit:
+            break
+
+    if not display_lines:
+        for line in cleaned.splitlines():
+            line = line.strip()
+            if _useful_display_line(line):
+                display_lines.append(line)
+            if len("\n\n".join(display_lines)) >= limit:
+                break
+
+    if not display_lines:
+        display_lines = [cleaned[:limit].strip()]
+
+    return "\n\n".join(display_lines)[:limit].strip()
+
+
 def _read_fallback_memory() -> list[dict[str, Any]]:
     _ensure_dirs()
     if not FALLBACK_MEMORY_PATH.exists():
@@ -287,16 +886,36 @@ def _upsert_fallback_record(record: dict[str, Any]) -> None:
     _write_fallback_memory(records)
 
 
+def _delete_fallback_record(circular_id: str) -> bool:
+    records = _read_fallback_memory()
+    remaining = [
+        record
+        for record in records
+        if (record.get("circular_id") or (record.get("metadata") or {}).get("circular_id")) != circular_id
+    ]
+    if len(remaining) == len(records):
+        return False
+    _write_fallback_memory(remaining)
+    return True
+
+
 def _fallback_record(circular_id: str, content: str, metadata: dict[str, Any] | None) -> dict[str, Any]:
     metadata = metadata or {}
     title = metadata.get("title") or metadata.get("file_name") or circular_id
     category = metadata.get("category") or "Regulatory Compliance"
+    display_text = display_reference_text(content)
+    withdrawn = bool(metadata.get("withdrawn")) or _has_withdrawn_marker(content)
+    source_status = metadata.get("source_status") or source_status_for_text(content)
     return {
         "circular_id": circular_id,
         "title": title,
         "category": category,
         "content": content or "",
-        "content_excerpt": _content_excerpt(content),
+        "content_excerpt": _content_excerpt(display_text or content),
+        "preview_text": display_text,
+        "display_text": display_text,
+        "withdrawn": withdrawn,
+        "source_status": source_status if withdrawn else metadata.get("source_status", ""),
         "metadata": metadata,
         "embedding": embed_text(content or "", dimensions=EMBEDDING_DIMENSIONS),
         "source": metadata.get("source", "local_seed"),
@@ -320,13 +939,25 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
     metadata = record.get("metadata") or {}
     circular_id = record.get("circular_id") or record.get("id") or metadata.get("circular_id", "")
     content = record.get("content") or record.get("document") or ""
+    display_text = record.get("display_text") or record.get("preview_text") or display_reference_text(content)
+    withdrawn = bool(record.get("withdrawn")) or bool(metadata.get("withdrawn")) or _has_withdrawn_marker(content)
+    source_status = record.get("source_status") or metadata.get("source_status") or source_status_for_text(content)
     return {
         "circular_id": circular_id,
         "id": circular_id,
-        "title": record.get("title") or metadata.get("title") or circular_id,
+        "title": derive_reference_title(
+            content,
+            uploaded_file_name=metadata.get("file_name"),
+            user_title=record.get("title") or metadata.get("title"),
+            fallback="Approved Policy Reference",
+        ),
         "category": record.get("category") or metadata.get("category") or "Regulatory Compliance",
         "content": content,
-        "content_excerpt": record.get("content_excerpt") or _content_excerpt(content),
+        "content_excerpt": _content_excerpt(display_text or content),
+        "preview_text": display_text,
+        "display_text": display_text,
+        "withdrawn": withdrawn,
+        "source_status": source_status if withdrawn else metadata.get("source_status", ""),
         "metadata": metadata,
         "similarity_score": round(float(similarity_score or 0.0), 4),
         "source": source or record.get("source") or metadata.get("source", "json_fallback"),
@@ -402,7 +1033,20 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
     metadata.setdefault("source", "local_seed")
     metadata.setdefault("stored_at", metadata.get("issue_date") or "local_seed")
     if metadata.get("source_type") == "User added approved reference" or str(circular_id or "").startswith("USER-REF-"):
-        content = clean_reference_text(content or "")
+        original_content = content or ""
+        content = clean_reference_text(original_content)
+        title_content = f"{original_content}\n{content}"
+        metadata["title"] = derive_reference_title(
+            title_content,
+            uploaded_file_name=metadata.get("file_name"),
+            user_title=metadata.get("title"),
+            fallback="Approved Policy Reference",
+        )
+        metadata["domain"] = infer_reference_domain(content, metadata.get("domain"))
+        metadata["category"] = infer_reference_category(content, metadata["domain"], metadata.get("category"))
+        metadata["withdrawn"] = _has_withdrawn_marker(original_content) or _has_withdrawn_marker(content)
+        if metadata["withdrawn"]:
+            metadata["source_status"] = "Withdrawn / archived"
     record = _fallback_record(circular_id, content or "", metadata)
 
     _upsert_fallback_record(record)
@@ -436,6 +1080,136 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
             "circular_id": circular_id,
             "fallback_memory_path": str(FALLBACK_MEMORY_PATH),
         }
+
+
+def cleanup_user_references() -> dict:
+    records = _read_fallback_memory()
+    if not records:
+        return {"status": "ok", "updated": 0}
+
+    updated_count = 0
+    cleaned_records = []
+    changed_records = []
+
+    for record in records:
+        circular_id = record.get("circular_id") or (record.get("metadata") or {}).get("circular_id")
+        if not _is_user_reference_id(circular_id):
+            cleaned_records.append(record)
+            continue
+
+        metadata = dict(record.get("metadata") or {})
+        original_content = record.get("content") or ""
+        cleaned_content = clean_reference_text(original_content)
+        title_content = f"{original_content}\n{cleaned_content}"
+        readable_title = derive_reference_title(
+            title_content,
+            uploaded_file_name=metadata.get("file_name"),
+            user_title=metadata.get("title") or record.get("title"),
+            fallback="Approved Policy Reference",
+        )
+        domain = infer_reference_domain(
+            cleaned_content,
+            metadata.get("domain") or record.get("domain"),
+        )
+        category = infer_reference_category(
+            cleaned_content,
+            domain,
+            metadata.get("category") or record.get("category"),
+        )
+        withdrawn = _has_withdrawn_marker(original_content) or _has_withdrawn_marker(cleaned_content)
+        source_status = "Withdrawn / archived" if withdrawn else metadata.get("source_status", "")
+
+        metadata.update(
+            {
+                "circular_id": circular_id,
+                "title": readable_title,
+                "domain": domain,
+                "category": category,
+                "source": metadata.get("source") or "user_added_reference",
+                "source_type": "User added approved reference",
+                "withdrawn": withdrawn,
+                "source_status": source_status,
+            }
+        )
+
+        new_record = _fallback_record(circular_id, cleaned_content, metadata)
+        changed = (
+            record.get("content") != cleaned_content
+            or record.get("title") != readable_title
+            or record.get("category") != category
+            or record.get("source_status") != new_record.get("source_status")
+            or (record.get("metadata") or {}).get("title") != readable_title
+            or (record.get("metadata") or {}).get("domain") != domain
+            or (record.get("metadata") or {}).get("category") != category
+            or (record.get("metadata") or {}).get("source_status") != source_status
+            or bool((record.get("metadata") or {}).get("withdrawn")) != withdrawn
+            or record.get("display_text") != new_record.get("display_text")
+        )
+        if changed:
+            updated_count += 1
+            changed_records.append(new_record)
+            reference_path = CIRCULARS_DIR / f"{circular_id}.txt"
+            if reference_path.exists():
+                try:
+                    reference_path.write_text(cleaned_content, encoding="utf-8")
+                except OSError:
+                    pass
+
+        cleaned_records.append(new_record)
+
+    if updated_count:
+        _write_fallback_memory(cleaned_records)
+        collection = _get_collection()
+        if collection is not None:
+            for record in changed_records:
+                try:
+                    collection.upsert(
+                        ids=[record["circular_id"]],
+                        documents=[record.get("content") or ""],
+                        embeddings=[record["embedding"]],
+                        metadatas=[_safe_metadata(record.get("metadata") or {})],
+                    )
+                except Exception:
+                    continue
+
+    return {"status": "ok", "updated": updated_count}
+
+
+def delete_circular(circular_id: str) -> dict:
+    _ensure_dirs()
+    if not circular_id:
+        return {"status": "error", "reason": "circular_id is required", "circular_id": circular_id}
+
+    fallback_deleted = _delete_fallback_record(circular_id)
+    chroma_deleted = False
+    chroma_error = None
+
+    collection = _get_collection()
+    if collection is not None:
+        try:
+            existing = collection.get(ids=[circular_id]).get("ids", [])
+            if existing:
+                collection.delete(ids=[circular_id])
+                chroma_deleted = True
+        except Exception as exc:
+            chroma_error = str(exc)
+
+    if not fallback_deleted and not chroma_deleted:
+        return {
+            "status": "not_found",
+            "circular_id": circular_id,
+            "fallback_deleted": False,
+            "chroma_deleted": False,
+            "chroma_error": chroma_error,
+        }
+
+    return {
+        "status": "deleted",
+        "circular_id": circular_id,
+        "fallback_deleted": fallback_deleted,
+        "chroma_deleted": chroma_deleted,
+        "chroma_error": chroma_error,
+    }
 
 
 def _search_fallback(query: str, n_results: int = 3) -> list[dict[str, Any]]:

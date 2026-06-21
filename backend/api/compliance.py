@@ -11,7 +11,14 @@ from engines.compliance.vision import verify_evidence_from_upload
 from engines.compliance.chroma_store import (
     add_circular,
     clean_reference_text,
+    cleanup_user_references,
+    delete_circular,
+    derive_reference_title,
+    display_reference_text,
+    infer_reference_category,
+    infer_reference_domain,
     list_circulars as list_memory_circulars,
+    source_status_for_text,
 )
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
@@ -117,6 +124,38 @@ def _store_reference_file(circular_id: str, circular_text: str) -> None:
     reference_path.write_text(circular_text, encoding="utf-8")
 
 
+def _is_user_reference(circular_id: str) -> bool:
+    return bool(circular_id and circular_id.startswith("USER-REF-"))
+
+
+def _reference_file_path(circular_id: str):
+    if "/" in circular_id or "\\" in circular_id:
+        raise HTTPException(status_code=400, detail="Invalid circular_id")
+    return CIRCULARS_DIR / f"{circular_id}.txt"
+
+
+def _looks_hash_like_title(title: Optional[str], circular_id: Optional[str] = None) -> bool:
+    text = (title or "").strip()
+    if not text:
+        return True
+    if circular_id and text == circular_id:
+        return True
+    if text.startswith("USER-REF-"):
+        return True
+    compact = re.sub(r"[^A-Za-z0-9]", "", text)
+    if len(compact) < 24 or " " in text:
+        return False
+    digit_ratio = sum(char.isdigit() for char in compact) / max(1, len(compact))
+    upper_ratio = sum(char.isupper() for char in compact) / max(1, len(compact))
+    return digit_ratio >= 0.15 or upper_ratio >= 0.65
+
+
+def _display_title(title: Optional[str], content: str, circular_id: Optional[str] = None) -> str:
+    if title and not _looks_hash_like_title(title, circular_id):
+        return title.strip()
+    return derive_reference_title(content, user_title=title, fallback="Approved Policy Reference")
+
+
 def _validate_reference_domain(domain: str) -> None:
     if domain not in REFERENCE_DOMAINS:
         allowed = ", ".join(sorted(REFERENCE_DOMAINS))
@@ -125,34 +164,50 @@ def _validate_reference_domain(domain: str) -> None:
 
 def _store_reference_circular(
     *,
-    title: str,
-    domain: str,
-    category: str,
+    title: str = "",
+    domain: str = "general_compliance",
+    category: str = "",
     circular_text: str,
     file_name: str = "",
 ) -> dict:
-    circular_text = clean_reference_text(circular_text)
+    original_text = circular_text or ""
+    circular_text = clean_reference_text(original_text)
     if len(circular_text) < 100:
         raise HTTPException(
             status_code=400,
             detail="circular_text must be at least 100 characters",
         )
 
-    _validate_reference_domain(domain)
+    requested_domain = (domain or "").strip() or "general_compliance"
+    _validate_reference_domain(requested_domain)
+    title_content = f"{original_text}\n{circular_text}"
+    resolved_title = derive_reference_title(
+        title_content,
+        uploaded_file_name=file_name,
+        user_title=(title or "").strip(),
+        fallback="Approved Policy Reference",
+    )
+    resolved_domain = infer_reference_domain(circular_text, requested_domain)
+    resolved_category = infer_reference_category(circular_text, resolved_domain, category)
+    withdrawn = bool(source_status_for_text(original_text) or source_status_for_text(circular_text))
+    source_status = "Withdrawn / archived" if withdrawn else ""
+    preview_text = display_reference_text(circular_text)
 
-    circular_id = _new_reference_circular_id(title)
+    circular_id = _new_reference_circular_id(resolved_title)
     stored_at = datetime.utcnow().isoformat()
     metadata = {
         "circular_id": circular_id,
-        "title": title,
-        "domain": domain,
-        "category": category,
+        "title": resolved_title,
+        "domain": resolved_domain,
+        "category": resolved_category,
         "regulator": "Reserve Bank of India",
         "source": "user_added_reference",
         "source_type": "User added approved reference",
         "file_name": file_name or f"{circular_id}.txt",
         "stored_at": stored_at,
         "status": "available",
+        "withdrawn": withdrawn,
+        "source_status": source_status,
     }
 
     try:
@@ -173,8 +228,13 @@ def _store_reference_circular(
     return {
         "status": "stored",
         "circular_id": circular_id,
-        "title": title,
-        "domain": domain,
+        "title": resolved_title,
+        "domain": resolved_domain,
+        "category": resolved_category,
+        "withdrawn": withdrawn,
+        "source_status": source_status,
+        "preview_text": preview_text,
+        "display_text": preview_text,
         "message": "Reference circular added to Policy Reference Library",
     }
 
@@ -269,9 +329,22 @@ def _circular_item_from_local(local_circular: dict) -> dict:
     except Exception:
         parsed = {}
 
-    title = parsed.get("title") or circular_id.replace("_", " ").title()
-    category = parsed.get("category") or "General Regulatory Compliance"
-    summary = parsed.get("normalized_summary") or "Local regulatory circular available for offline analysis."
+    cleaned_content = clean_reference_text(content) if content else ""
+    display_text = display_reference_text(cleaned_content or content)
+    title = derive_reference_title(
+        cleaned_content or content,
+        uploaded_file_name=f"{circular_id}.txt",
+        user_title=parsed.get("title"),
+        fallback="Approved Policy Reference",
+    )
+    domain = infer_reference_domain(cleaned_content or content, None)
+    category = infer_reference_category(cleaned_content or content, domain, parsed.get("category"))
+    source_status = source_status_for_text(cleaned_content or content)
+    summary = (
+        parsed.get("normalized_summary")
+        or (display_text[:220] if display_text else "")
+        or "Local regulatory circular available for offline analysis."
+    )
 
     return {
         "id": circular_id,
@@ -281,13 +354,19 @@ def _circular_item_from_local(local_circular: dict) -> dict:
         "issue_date": parsed.get("issue_date") or "Local",
         "deadline": parsed.get("deadline") or "To be assessed",
         "category": category,
+        "domain": domain,
         "source": "local_seed",
         "status": "available",
         "summary": summary,
         "old_policy": "Existing local policy baseline will be compared during analysis.",
         "new_policy": summary,
         "detected_gap": "Run analysis to generate policy gaps.",
-        "text": content,
+        "text": display_text or cleaned_content,
+        "content": cleaned_content,
+        "preview_text": display_text,
+        "display_text": display_text,
+        "withdrawn": bool(source_status),
+        "source_status": source_status,
         "priority_score": 5,
         "priority_label": "Medium",
         "priority_reason": "Priority is assigned after workflow analysis.",
@@ -297,10 +376,40 @@ def _circular_item_from_local(local_circular: dict) -> dict:
 def _circular_item_from_memory(memory_circular: dict) -> dict:
     metadata = memory_circular.get("metadata") or {}
     circular_id = memory_circular.get("circular_id") or memory_circular.get("id") or metadata.get("circular_id")
-    title = memory_circular.get("title") or metadata.get("title") or circular_id
-    category = memory_circular.get("category") or metadata.get("category") or "Regulatory Compliance"
-    content = memory_circular.get("content") or ""
-    summary = memory_circular.get("content_excerpt") or "Seeded regulatory memory circular available for analysis."
+    raw_content = memory_circular.get("content") or ""
+    content = clean_reference_text(raw_content) if _is_user_reference(circular_id) else raw_content
+    display_text = (
+        memory_circular.get("preview_text")
+        or memory_circular.get("display_text")
+        or display_reference_text(content)
+    )
+    title_content = f"{raw_content}\n{content}"
+    title = derive_reference_title(
+        title_content,
+        uploaded_file_name=metadata.get("file_name"),
+        user_title=memory_circular.get("title") or metadata.get("title"),
+        fallback="Approved Policy Reference",
+    )
+    domain = infer_reference_domain(
+        content,
+        metadata.get("domain") or memory_circular.get("domain"),
+    )
+    category = infer_reference_category(
+        content,
+        domain,
+        memory_circular.get("category") or metadata.get("category"),
+    )
+    summary = (
+        memory_circular.get("content_excerpt")
+        or (display_text[:220] if display_text else "")
+        or "Seeded regulatory memory circular available for analysis."
+    )
+    source_status = (
+        memory_circular.get("source_status")
+        or metadata.get("source_status")
+        or source_status_for_text(title_content)
+    )
+    withdrawn = bool(memory_circular.get("withdrawn") or metadata.get("withdrawn") or source_status)
     return {
         "id": circular_id,
         "circular_id": circular_id,
@@ -309,7 +418,7 @@ def _circular_item_from_memory(memory_circular: dict) -> dict:
         "issue_date": metadata.get("issue_date", "Local"),
         "deadline": metadata.get("deadline", "To be assessed"),
         "category": category,
-        "domain": metadata.get("domain", "general_compliance"),
+        "domain": domain,
         "source": memory_circular.get("source", "regulatory_memory"),
         "source_type": metadata.get("source_type", "Regulatory memory"),
         "file_name": metadata.get("file_name", ""),
@@ -319,11 +428,16 @@ def _circular_item_from_memory(memory_circular: dict) -> dict:
         "old_policy": "Seeded regulatory memory baseline.",
         "new_policy": summary,
         "detected_gap": "Run analysis to compare a new circular against this memory.",
-        "text": content,
+        "text": display_text or content,
+        "content": content,
+        "preview_text": display_text,
+        "display_text": display_text,
+        "withdrawn": withdrawn,
+        "source_status": source_status if withdrawn else "",
         "priority_score": 5,
         "priority_label": "Medium",
         "priority_reason": "Priority is assigned after workflow analysis.",
-        "regulatory_reference": metadata.get("title", title),
+        "regulatory_reference": title,
     }
 
 
@@ -341,10 +455,10 @@ def analyze_circular(request: CircularRequest):
 
 @router.post("/references")
 def add_reference_circular(request: ReferenceCircularRequest):
-    title = _clean_required(request.title, "title")
-    domain = _clean_required(request.domain, "domain")
+    title = (request.title or "").strip()
+    domain = (request.domain or "").strip() or "general_compliance"
     circular_text = _clean_required(request.circular_text, "circular_text")
-    category = (request.category or "").strip() or "Regulatory Compliance"
+    category = (request.category or "").strip()
     file_name = (request.file_name or "").strip()
 
     return _store_reference_circular(
@@ -363,9 +477,9 @@ async def upload_reference_circular(
     category: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ):
-    title = _clean_required(title, "title")
-    domain = _clean_required(domain, "domain")
-    category = (category or "").strip() or "Regulatory Compliance"
+    title = (title or "").strip()
+    domain = (domain or "").strip() or "general_compliance"
+    category = (category or "").strip()
     _validate_reference_domain(domain)
 
     if file is None:
@@ -408,6 +522,37 @@ async def upload_reference_circular(
         **stored,
         "extracted_characters": len(circular_text),
         "file_name": file_name,
+    }
+
+
+@router.delete("/references/{circular_id}")
+def delete_reference_circular(circular_id: str):
+    if not _is_user_reference(circular_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Seeded policy references are locked and cannot be deleted from the UI.",
+        )
+
+    reference_path = _reference_file_path(circular_id)
+    file_deleted = False
+    if reference_path.exists():
+        try:
+            reference_path.unlink()
+            file_deleted = True
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Reference text file could not be deleted: {exc}",
+            ) from exc
+
+    delete_result = delete_circular(circular_id)
+    if delete_result.get("status") != "deleted" and not file_deleted:
+        raise HTTPException(status_code=404, detail="Reference circular not found")
+
+    return {
+        "status": "deleted",
+        "circular_id": circular_id,
+        "message": "Reference circular deleted from Policy Reference Library",
     }
 
 
@@ -464,6 +609,11 @@ async def verify_evidence(
 
 @router.get("/circulars")
 def list_circulars():
+    try:
+        cleanup_user_references()
+    except Exception:
+        pass
+
     try:
         memory_items = [_circular_item_from_memory(item) for item in list_memory_circulars()]
     except Exception:
