@@ -106,6 +106,20 @@ export async function fetchComplianceCirculars() {
   );
 }
 
+export async function addComplianceReference(payload) {
+  return requestComplianceJson(
+    "/api/compliance/references",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    "Reference circular could not be added. Please confirm the backend is running and try again.",
+  );
+}
+
 export async function fetchComplianceActions() {
   return requestComplianceJson(
     "/api/compliance/actions",

@@ -4,6 +4,7 @@ import CircularCompare from "../components/compliance/CircularCompare.jsx";
 import EvidenceUpload from "../components/compliance/EvidenceUpload.jsx";
 import Layout from "../components/ui/Layout.jsx";
 import {
+  addComplianceReference,
   analyzeComplianceCircular,
   fetchComplianceCirculars,
 } from "../lib/compliance-api.js";
@@ -67,6 +68,27 @@ const checkItems = [
   "Generates action points and evidence requirements",
 ];
 
+const referenceDomainOptions = [
+  "digital_fraud",
+  "it_outsourcing",
+  "kyc_aml",
+  "cyber_incident",
+  "digital_payment",
+  "mobile_banking",
+  "digital_lending",
+  "bcp_drp",
+  "audit_governance",
+  "general_compliance",
+];
+
+const initialReferenceForm = {
+  title: "",
+  domain: "general_compliance",
+  category: "",
+  circularText: "",
+  fileName: "",
+};
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -95,6 +117,10 @@ function normalizeCircularItem(item, index) {
     regulator: item.regulator ?? item.primary_regulator ?? "Reserve Bank of India",
     issue_date: item.issue_date ?? "Reference",
     category: item.category ?? "Regulatory Compliance",
+    domain: item.domain ?? "general_compliance",
+    source_type: item.source_type ?? item.source ?? "Reference",
+    file_name: item.file_name ?? "",
+    stored_at: item.stored_at ?? "",
     summary:
       item.summary ??
       item.normalized_summary ??
@@ -241,6 +267,12 @@ export default function Compliance() {
     fallbackCirculars[0].circular_id,
   );
   const [referencesOpen, setReferencesOpen] = useState(false);
+  const [referenceFormOpen, setReferenceFormOpen] = useState(false);
+  const [referenceForm, setReferenceForm] = useState(initialReferenceForm);
+  const [referenceSaveState, setReferenceSaveState] = useState({
+    status: "idle",
+    message: "",
+  });
   const [circularText, setCircularText] = useState("");
   const [fileName, setFileName] = useState("new-rbi-circular.txt");
   const [analysis, setAnalysis] = useState(null);
@@ -250,10 +282,35 @@ export default function Compliance() {
     error: "",
   });
 
+  async function loadPolicyReferences() {
+    try {
+      const circularPayload = await fetchComplianceCirculars();
+
+      if (circularPayload?.ok === false) {
+        return;
+      }
+
+      const normalizedCirculars = asArray(
+        circularPayload.items ?? circularPayload.circulars ?? circularPayload,
+      ).map(normalizeCircularItem);
+
+      if (normalizedCirculars.length > 0) {
+        setCirculars(normalizedCirculars);
+        setSelectedReferenceId((currentId) =>
+          normalizedCirculars.some((item) => item.circular_id === currentId)
+            ? currentId
+            : normalizedCirculars[0].circular_id,
+        );
+      }
+    } catch {
+      // Keep the built-in policy references for the prototype if the service is unavailable.
+    }
+  }
+
   useEffect(() => {
     let alive = true;
 
-    async function loadPolicyReferences() {
+    async function loadInitialPolicyReferences() {
       try {
         const circularPayload = await fetchComplianceCirculars();
 
@@ -278,7 +335,7 @@ export default function Compliance() {
       }
     }
 
-    loadPolicyReferences();
+    loadInitialPolicyReferences();
 
     return () => {
       alive = false;
@@ -335,6 +392,98 @@ export default function Compliance() {
     setCircularText(demoCircularText);
     setFileName("rbi-new-2026-004-demo.txt");
     clearAnalysis();
+  }
+
+  function handleReferenceFieldChange(field, value) {
+    setReferenceForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setReferenceSaveState({ status: "idle", message: "" });
+  }
+
+  async function handleReferenceFileChange(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+      setReferenceSaveState({
+        status: "error",
+        message:
+          "Only TXT upload is supported here. Paste PDF/DOCX text manually for this prototype.",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      setReferenceForm((current) => ({
+        ...current,
+        circularText: text,
+        fileName: file.name,
+        title: current.title || file.name.replace(/\.txt$/i, "").replace(/[-_]+/g, " "),
+      }));
+      setReferenceSaveState({ status: "idle", message: "" });
+    } catch {
+      setReferenceSaveState({
+        status: "error",
+        message: "TXT file could not be read. Paste the reference text manually.",
+      });
+    }
+  }
+
+  async function handleSaveReference() {
+    const title = referenceForm.title.trim();
+    const domain = referenceForm.domain.trim();
+    const category = referenceForm.category.trim();
+    const referenceText = referenceForm.circularText.trim();
+
+    if (!title || !domain || !referenceText) {
+      setReferenceSaveState({
+        status: "error",
+        message: "Reference title, domain, and circular text are required.",
+      });
+      return;
+    }
+
+    if (referenceText.length < 100) {
+      setReferenceSaveState({
+        status: "error",
+        message: "Circular text must be at least 100 characters.",
+      });
+      return;
+    }
+
+    setReferenceSaveState({ status: "loading", message: "" });
+
+    const result = await addComplianceReference({
+      title,
+      domain,
+      category,
+      circular_text: referenceText,
+      file_name: referenceForm.fileName.trim(),
+    });
+
+    if (result?.ok === false) {
+      setReferenceSaveState({
+        status: "error",
+        message:
+          result.error ||
+          "Reference circular could not be added. Please review the form and try again.",
+      });
+      return;
+    }
+
+    setReferenceForm(initialReferenceForm);
+    setReferenceSaveState({
+      status: "success",
+      message: "Reference circular added to Policy Reference Library.",
+    });
+    await loadPolicyReferences();
   }
 
   async function handleAnalyzeCircular() {
@@ -793,14 +942,149 @@ export default function Compliance() {
               Selected references loaded
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setReferencesOpen((open) => !open)}
-            className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
-          >
-            {referencesOpen ? "Hide References" : "View References"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setReferenceFormOpen((open) => !open)}
+              className="rounded-lg border border-sky-400/40 bg-sky-500/[0.10] px-4 py-2 text-xs font-semibold text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/[0.16]"
+            >
+              Add Reference Circular
+            </button>
+            <button
+              type="button"
+              onClick={() => setReferencesOpen((open) => !open)}
+              className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
+            >
+              {referencesOpen ? "Hide References" : "View References"}
+            </button>
+          </div>
         </div>
+
+        {referenceFormOpen && (
+          <div className="border-b border-slate-800/80 px-5 py-4">
+            <div className="rounded-lg border border-slate-800/80 bg-[#0a1627] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-300">
+                    Add Reference Circular
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Add an approved old circular or policy reference used for comparison.
+                  </p>
+                </div>
+                <span className="rounded-full border border-slate-700 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Reference only
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_minmax(0,1fr)]">
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Reference Title
+                  </label>
+                  <input
+                    value={referenceForm.title}
+                    onChange={(event) =>
+                      handleReferenceFieldChange("title", event.target.value)
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-400/60"
+                    placeholder="Digital Payment Security Controls Reference"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Domain
+                  </label>
+                  <select
+                    value={referenceForm.domain}
+                    onChange={(event) =>
+                      handleReferenceFieldChange("domain", event.target.value)
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-400/60"
+                  >
+                    {referenceDomainOptions.map((domain) => (
+                      <option key={domain} value={domain}>
+                        {domain}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Category
+                  </label>
+                  <input
+                    value={referenceForm.category}
+                    onChange={(event) =>
+                      handleReferenceFieldChange("category", event.target.value)
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-400/60"
+                    placeholder="Digital Payment Security / Fraud Monitoring"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Circular Text
+                </label>
+                <textarea
+                  value={referenceForm.circularText}
+                  onChange={(event) =>
+                    handleReferenceFieldChange("circularText", event.target.value)
+                  }
+                  rows={5}
+                  className="mt-2 min-h-[140px] w-full resize-y rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2.5 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-400/60"
+                  placeholder="Paste the approved old circular or policy reference text..."
+                />
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Optional TXT file upload
+                  </label>
+                  <input
+                    type="file"
+                    accept=".txt,text/plain"
+                    onChange={handleReferenceFileChange}
+                    className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700"
+                  />
+                  {referenceForm.fileName && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Loaded {referenceForm.fileName}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveReference}
+                  disabled={referenceSaveState.status === "loading"}
+                  className="rounded-lg bg-sky-400 px-5 py-2.5 text-sm font-semibold text-[#06101f] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  {referenceSaveState.status === "loading"
+                    ? "Saving reference..."
+                    : "Save Reference"}
+                </button>
+              </div>
+
+              {referenceSaveState.message && (
+                <div
+                  className={`mt-3 rounded-lg border px-4 py-3 text-sm leading-6 ${
+                    referenceSaveState.status === "success"
+                      ? "border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-100"
+                      : "border-amber-400/25 bg-amber-500/[0.08] text-amber-100"
+                  }`}
+                >
+                  {referenceSaveState.message}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {referencesOpen && (
           <div className="grid gap-4 p-4 xl:grid-cols-[420px_minmax(0,1fr)]">
@@ -821,7 +1105,7 @@ export default function Compliance() {
                     {circular.title}
                   </h3>
                   <p className="mt-2 text-xs leading-5 text-slate-500">
-                    {circular.category} - {circular.regulator}
+                    {circular.domain} / {circular.category} - {circular.regulator}
                   </p>
                   <button
                     type="button"
@@ -844,6 +1128,9 @@ export default function Compliance() {
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 {selectedReference?.regulator ?? "Reserve Bank of India"} -{" "}
                 {selectedReference?.issue_date ?? "Reference"}
+              </p>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                {selectedReference?.domain ?? "general_compliance"}
               </p>
               <p className="mt-4 text-sm leading-6 text-slate-300">
                 {selectedReference?.summary ??

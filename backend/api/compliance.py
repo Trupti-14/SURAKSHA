@@ -1,14 +1,30 @@
+import re
+from datetime import datetime
+
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from typing import Optional
 from engines.compliance.workflow import run_compliance_workflow
-from engines.compliance.scout import get_circular_by_id, parse_circular_text, scan_circulars
+from engines.compliance.scout import CIRCULARS_DIR, get_circular_by_id, parse_circular_text, scan_circulars
 from engines.compliance.vision import verify_evidence_from_upload
-from engines.compliance.chroma_store import list_circulars as list_memory_circulars
+from engines.compliance.chroma_store import add_circular, list_circulars as list_memory_circulars
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
-ROUTES = ["analyze", "evidence/verify", "circulars", "actions"]
+ROUTES = ["analyze", "evidence/verify", "circulars", "actions", "references"]
+
+REFERENCE_DOMAINS = {
+    "digital_fraud",
+    "it_outsourcing",
+    "kyc_aml",
+    "cyber_incident",
+    "digital_payment",
+    "mobile_banking",
+    "digital_lending",
+    "bcp_drp",
+    "audit_governance",
+    "general_compliance",
+}
 
 SAMPLE_CIRCULARS = [
     {
@@ -63,6 +79,37 @@ class CircularRequest(BaseModel):
     mode: Optional[str] = "offline"
     circular_id: Optional[str] = None
     content: Optional[str] = None
+
+
+class ReferenceCircularRequest(BaseModel):
+    title: Optional[str] = None
+    domain: Optional[str] = None
+    category: Optional[str] = None
+    circular_text: Optional[str] = None
+    file_name: Optional[str] = None
+
+
+def _clean_required(value: Optional[str], field_name: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail=f"{field_name} is required")
+    return cleaned
+
+
+def _safe_title_slug(title: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", title.strip()).strip("-").upper()
+    return slug[:48] or "REFERENCE"
+
+
+def _new_reference_circular_id(title: str) -> str:
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    return f"USER-REF-{_safe_title_slug(title)}-{timestamp}"
+
+
+def _store_reference_file(circular_id: str, circular_text: str) -> None:
+    CIRCULARS_DIR.mkdir(parents=True, exist_ok=True)
+    reference_path = CIRCULARS_DIR / f"{circular_id}.txt"
+    reference_path.write_text(circular_text, encoding="utf-8")
 
 
 def _normalize_analyze_response(result: dict) -> dict:
@@ -137,7 +184,11 @@ def _circular_item_from_memory(memory_circular: dict) -> dict:
         "issue_date": metadata.get("issue_date", "Local"),
         "deadline": metadata.get("deadline", "To be assessed"),
         "category": category,
+        "domain": metadata.get("domain", "general_compliance"),
         "source": memory_circular.get("source", "regulatory_memory"),
+        "source_type": metadata.get("source_type", "Regulatory memory"),
+        "file_name": metadata.get("file_name", ""),
+        "stored_at": metadata.get("stored_at", ""),
         "status": "available",
         "summary": summary,
         "old_policy": "Seeded regulatory memory baseline.",
@@ -161,6 +212,63 @@ def analyze_circular(request: CircularRequest):
         circular_id=request.circular_id,
     )
     return _normalize_analyze_response(result)
+
+
+@router.post("/references")
+def add_reference_circular(request: ReferenceCircularRequest):
+    title = _clean_required(request.title, "title")
+    domain = _clean_required(request.domain, "domain")
+    circular_text = _clean_required(request.circular_text, "circular_text")
+    category = (request.category or "").strip() or "Regulatory Compliance"
+    file_name = (request.file_name or "").strip()
+
+    if len(circular_text) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="circular_text must be at least 100 characters",
+        )
+
+    if domain not in REFERENCE_DOMAINS:
+        allowed = ", ".join(sorted(REFERENCE_DOMAINS))
+        raise HTTPException(status_code=400, detail=f"domain must be one of: {allowed}")
+
+    circular_id = _new_reference_circular_id(title)
+    stored_at = datetime.utcnow().isoformat()
+    metadata = {
+        "circular_id": circular_id,
+        "title": title,
+        "domain": domain,
+        "category": category,
+        "regulator": "Reserve Bank of India",
+        "source": "user_added_reference",
+        "source_type": "User added approved reference",
+        "file_name": file_name or f"{circular_id}.txt",
+        "stored_at": stored_at,
+        "status": "available",
+    }
+
+    try:
+        _store_reference_file(circular_id, circular_text)
+        storage_result = add_circular({**metadata, "content": circular_text})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reference circular could not be stored: {exc}",
+        ) from exc
+
+    if storage_result.get("status") not in {"stored", "stored_fallback"}:
+        raise HTTPException(
+            status_code=500,
+            detail=storage_result.get("reason") or "Reference circular could not be stored",
+        )
+
+    return {
+        "status": "stored",
+        "circular_id": circular_id,
+        "title": title,
+        "domain": domain,
+        "message": "Reference circular added to Policy Reference Library",
+    }
 
 
 @router.post("/evidence/verify")
