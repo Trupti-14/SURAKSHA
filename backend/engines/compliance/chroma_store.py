@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,47 @@ _client = None
 _collection = None
 _client_mode = None
 _last_chroma_error = None
+
+CONTROL_VERBS = (
+    "shall",
+    "must",
+    "should",
+    "ensure",
+    "maintain",
+    "submit",
+    "report",
+    "notify",
+    "retain",
+    "monitor",
+    "review",
+    "audit",
+    "escalate",
+    "test",
+    "approve",
+)
+
+NOISY_SECTION_HEADINGS = (
+    "acronyms",
+    "abbreviations",
+    "table of contents",
+    "contents",
+    "list of circulars",
+    "repealed circular",
+    "repealed circulars",
+    "superseded circular",
+    "superseded circulars",
+    "withdrawn circular",
+    "circular reference",
+)
+
+NOISY_LINE_PHRASES = (
+    "circular reference date subject remarks",
+    "reference date subject remarks",
+    "date subject remarks",
+    "table of contents",
+    "master circulars repealed",
+    "list of repealed circulars",
+)
 
 
 def _utc_now():
@@ -51,6 +93,146 @@ def _safe_metadata(metadata: dict[str, Any] | None) -> dict[str, str | int | flo
 def _content_excerpt(content: str, limit: int = 220) -> str:
     text = " ".join((content or "").split())
     return text[:limit]
+
+
+def _has_control_verb(line: str) -> bool:
+    lower = (line or "").lower()
+    return any(re.search(rf"\b{re.escape(verb)}\b", lower) for verb in CONTROL_VERBS)
+
+
+def _looks_like_page_number(line: str) -> bool:
+    text = (line or "").strip()
+    return bool(
+        re.match(r"^(?:page\s*)?\d{1,4}(?:\s*(?:of|/)\s*\d{1,4})?$", text, flags=re.I)
+        or re.match(r"^[-–—]\s*\d{1,4}\s*[-–—]$", text)
+    )
+
+
+def _mostly_abbreviations(line: str) -> bool:
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9&/-]*", line or "")
+    if len(tokens) < 3:
+        return False
+    abbreviation_count = sum(
+        1
+        for token in tokens
+        if (
+            token.upper() == token
+            and len(re.sub(r"[^A-Z]", "", token)) >= 2
+            and not token.isdigit()
+        )
+    )
+    return abbreviation_count / max(1, len(tokens)) >= 0.65 and not _has_control_verb(line)
+
+
+def _looks_like_reference_table_row(line: str) -> bool:
+    lower = (line or "").lower()
+    if _has_control_verb(line):
+        return False
+    date_count = len(re.findall(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{4}\b", line or ""))
+    reference_markers = sum(
+        marker in lower
+        for marker in (
+            "circular",
+            "notification",
+            "master direction",
+            "reference",
+            "remarks",
+            "repealed",
+            "superseded",
+            "withdrawn",
+        )
+    )
+    column_like_spaces = bool(re.search(r"\S+\s{2,}\S+\s{2,}\S+", line or ""))
+    slashed_reference = bool(re.search(r"\b[A-Z]{2,}(?:/[A-Z0-9.-]+){2,}\b", line or ""))
+    return (date_count >= 2 and reference_markers >= 1) or (
+        reference_markers >= 2 and (column_like_spaces or slashed_reference)
+    )
+
+
+def _is_noisy_reference_line(line: str) -> bool:
+    normalized = " ".join((line or "").split())
+    lower = normalized.lower()
+    if not normalized:
+        return False
+    if any(phrase in lower for phrase in NOISY_LINE_PHRASES):
+        return True
+    if _looks_like_page_number(normalized):
+        return True
+    if _mostly_abbreviations(normalized):
+        return True
+    if _looks_like_reference_table_row(normalized):
+        return True
+    if len(normalized) <= 4 and normalized.upper() == normalized and not _has_control_verb(normalized):
+        return True
+    return False
+
+
+def _starts_noisy_section(line: str) -> bool:
+    lower = (line or "").strip(" :-").lower()
+    if lower in NOISY_SECTION_HEADINGS:
+        return True
+    if re.match(r"^(annex|annexure|appendix)\b", lower):
+        return any(term in lower for term in ("circular", "reference", "repeal", "acronym", "abbreviation", "historical"))
+    return False
+
+
+def clean_reference_text(text: str) -> str:
+    """
+    Remove PDF extraction noise from uploaded reference circulars while keeping
+    policy/control paragraphs available for comparison.
+    """
+    if not text:
+        return ""
+
+    normalized_text = (
+        str(text)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+    )
+    raw_lines = [re.sub(r"\s+", " ", line).strip() for line in normalized_text.splitlines()]
+    line_counts = {}
+    for line in raw_lines:
+        if line:
+            line_counts[line.lower()] = line_counts.get(line.lower(), 0) + 1
+
+    cleaned_lines = []
+    skip_noise_section = False
+
+    for line in raw_lines:
+        lower = line.lower()
+
+        if not line:
+            skip_noise_section = False
+            if cleaned_lines and cleaned_lines[-1] != "":
+                cleaned_lines.append("")
+            continue
+
+        if skip_noise_section:
+            if _has_control_verb(line) and len(line) >= 60:
+                skip_noise_section = False
+            else:
+                continue
+
+        if _starts_noisy_section(line):
+            skip_noise_section = True
+            continue
+
+        if any(phrase in lower for phrase in NOISY_LINE_PHRASES):
+            skip_noise_section = True
+            continue
+
+        if line_counts.get(lower, 0) >= 3 and len(line) <= 120 and not _has_control_verb(line):
+            continue
+
+        if _is_noisy_reference_line(line):
+            continue
+
+        cleaned_lines.append(line)
+
+    cleaned = "\n".join(cleaned_lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
 
 
 def _read_fallback_memory() -> list[dict[str, Any]]:
@@ -205,6 +387,8 @@ def add_circular(circular: dict) -> dict:
         for key, value in circular.items()
         if key not in {"content", "text", "embedding"}
     }
+    if metadata.get("source_type") == "User added approved reference" or str(circular_id or "").startswith("USER-REF-"):
+        content = clean_reference_text(content)
     return store_circular(circular_id, content, metadata)
 
 
@@ -217,6 +401,8 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
     metadata.setdefault("circular_id", circular_id)
     metadata.setdefault("source", "local_seed")
     metadata.setdefault("stored_at", metadata.get("issue_date") or "local_seed")
+    if metadata.get("source_type") == "User added approved reference" or str(circular_id or "").startswith("USER-REF-"):
+        content = clean_reference_text(content or "")
     record = _fallback_record(circular_id, content or "", metadata)
 
     _upsert_fallback_record(record)

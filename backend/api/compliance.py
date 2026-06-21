@@ -1,4 +1,5 @@
 import re
+from io import BytesIO
 from datetime import datetime
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -7,7 +8,11 @@ from typing import Optional
 from engines.compliance.workflow import run_compliance_workflow
 from engines.compliance.scout import CIRCULARS_DIR, get_circular_by_id, parse_circular_text, scan_circulars
 from engines.compliance.vision import verify_evidence_from_upload
-from engines.compliance.chroma_store import add_circular, list_circulars as list_memory_circulars
+from engines.compliance.chroma_store import (
+    add_circular,
+    clean_reference_text,
+    list_circulars as list_memory_circulars,
+)
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -112,6 +117,102 @@ def _store_reference_file(circular_id: str, circular_text: str) -> None:
     reference_path.write_text(circular_text, encoding="utf-8")
 
 
+def _validate_reference_domain(domain: str) -> None:
+    if domain not in REFERENCE_DOMAINS:
+        allowed = ", ".join(sorted(REFERENCE_DOMAINS))
+        raise HTTPException(status_code=400, detail=f"domain must be one of: {allowed}")
+
+
+def _store_reference_circular(
+    *,
+    title: str,
+    domain: str,
+    category: str,
+    circular_text: str,
+    file_name: str = "",
+) -> dict:
+    circular_text = clean_reference_text(circular_text)
+    if len(circular_text) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="circular_text must be at least 100 characters",
+        )
+
+    _validate_reference_domain(domain)
+
+    circular_id = _new_reference_circular_id(title)
+    stored_at = datetime.utcnow().isoformat()
+    metadata = {
+        "circular_id": circular_id,
+        "title": title,
+        "domain": domain,
+        "category": category,
+        "regulator": "Reserve Bank of India",
+        "source": "user_added_reference",
+        "source_type": "User added approved reference",
+        "file_name": file_name or f"{circular_id}.txt",
+        "stored_at": stored_at,
+        "status": "available",
+    }
+
+    try:
+        _store_reference_file(circular_id, circular_text)
+        storage_result = add_circular({**metadata, "content": circular_text})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reference circular could not be stored: {exc}",
+        ) from exc
+
+    if storage_result.get("status") not in {"stored", "stored_fallback"}:
+        raise HTTPException(
+            status_code=500,
+            detail=storage_result.get("reason") or "Reference circular could not be stored",
+        )
+
+    return {
+        "status": "stored",
+        "circular_id": circular_id,
+        "title": title,
+        "domain": domain,
+        "message": "Reference circular added to Policy Reference Library",
+    }
+
+
+def _decode_txt_upload(file_bytes: bytes) -> str:
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="TXT file must be UTF-8 encoded.") from exc
+
+
+def _extract_pdf_text(file_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF extraction dependency is not available. Paste the PDF text manually or install pypdf.",
+        ) from exc
+
+    try:
+        reader = PdfReader(BytesIO(file_bytes))
+        page_text = [page.extract_text() or "" for page in reader.pages]
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="PDF text extraction failed. Paste the PDF text manually for this prototype.",
+        ) from exc
+
+    extracted_text = "\n\n".join(text.strip() for text in page_text if text.strip()).strip()
+    if not extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail="No readable text found in this PDF. Paste the text manually for this prototype.",
+        )
+    return extracted_text
+
+
 def _normalize_analyze_response(result: dict) -> dict:
     result = result or {}
     priority = result.get("priority") or {}
@@ -120,7 +221,7 @@ def _normalize_analyze_response(result: dict) -> dict:
         "summary": result.get("summary") or "Compliance analysis completed in offline mode.",
         "obligations": result.get("obligations") or [],
         "similar_circulars": result.get("similar_circulars") or [],
-        "policy_gaps": result.get("policy_gaps") or [],
+        "policy_gaps": _normalize_policy_gap_references(result.get("policy_gaps") or []),
         "measurable_action_points": result.get("measurable_action_points") or [],
         "priority": {
             "priority_score": priority.get("priority_score", 0),
@@ -130,6 +231,30 @@ def _normalize_analyze_response(result: dict) -> dict:
         "workflow": result.get("workflow") or [],
         "engine_notes": result.get("engine_notes") or [],
     }
+
+
+def _normalize_policy_gap_references(policy_gaps: list) -> list:
+    normalized = []
+    for gap in policy_gaps:
+        if not isinstance(gap, dict):
+            normalized.append(gap)
+            continue
+
+        existing_reference = (
+            gap.get("existing_reference")
+            or gap.get("old_requirement")
+            or gap.get("old_policy")
+            or gap.get("existing_requirement")
+            or gap.get("current_policy")
+        )
+        if existing_reference:
+            gap = {
+                **gap,
+                "existing_reference": existing_reference,
+                "old_requirement": gap.get("old_requirement") or existing_reference,
+            }
+        normalized.append(gap)
+    return normalized
 
 
 def _circular_item_from_local(local_circular: dict) -> dict:
@@ -222,52 +347,67 @@ def add_reference_circular(request: ReferenceCircularRequest):
     category = (request.category or "").strip() or "Regulatory Compliance"
     file_name = (request.file_name or "").strip()
 
-    if len(circular_text) < 100:
-        raise HTTPException(
-            status_code=400,
-            detail="circular_text must be at least 100 characters",
-        )
+    return _store_reference_circular(
+        title=title,
+        domain=domain,
+        category=category,
+        circular_text=circular_text,
+        file_name=file_name,
+    )
 
-    if domain not in REFERENCE_DOMAINS:
-        allowed = ", ".join(sorted(REFERENCE_DOMAINS))
-        raise HTTPException(status_code=400, detail=f"domain must be one of: {allowed}")
 
-    circular_id = _new_reference_circular_id(title)
-    stored_at = datetime.utcnow().isoformat()
-    metadata = {
-        "circular_id": circular_id,
-        "title": title,
-        "domain": domain,
-        "category": category,
-        "regulator": "Reserve Bank of India",
-        "source": "user_added_reference",
-        "source_type": "User added approved reference",
-        "file_name": file_name or f"{circular_id}.txt",
-        "stored_at": stored_at,
-        "status": "available",
-    }
+@router.post("/references/upload")
+async def upload_reference_circular(
+    title: Optional[str] = Form(default=None),
+    domain: Optional[str] = Form(default=None),
+    category: Optional[str] = Form(default=None),
+    file: Optional[UploadFile] = File(default=None),
+):
+    title = _clean_required(title, "title")
+    domain = _clean_required(domain, "domain")
+    category = (category or "").strip() or "Regulatory Compliance"
+    _validate_reference_domain(domain)
+
+    if file is None:
+        raise HTTPException(status_code=400, detail="file is required")
+
+    file_name = (file.filename or "").strip()
+    extension = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    if extension not in {"txt", "pdf"}:
+        raise HTTPException(status_code=400, detail="Only TXT or PDF upload is supported here.")
 
     try:
-        _store_reference_file(circular_id, circular_text)
-        storage_result = add_circular({**metadata, "content": circular_text})
+        file_bytes = await file.read()
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Reference circular could not be stored: {exc}",
-        ) from exc
+        raise HTTPException(status_code=400, detail=f"Uploaded file could not be read: {exc}") from exc
 
-    if storage_result.get("status") not in {"stored", "stored_fallback"}:
-        raise HTTPException(
-            status_code=500,
-            detail=storage_result.get("reason") or "Reference circular could not be stored",
-        )
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
+    if extension == "txt":
+        circular_text = _decode_txt_upload(file_bytes).strip()
+    else:
+        circular_text = _extract_pdf_text(file_bytes).strip()
+
+    if not circular_text:
+        if extension == "pdf":
+            raise HTTPException(
+                status_code=400,
+                detail="No readable text found in this PDF. Paste the text manually for this prototype.",
+            )
+        raise HTTPException(status_code=400, detail="Uploaded TXT file is empty.")
+
+    stored = _store_reference_circular(
+        title=title,
+        domain=domain,
+        category=category,
+        circular_text=circular_text,
+        file_name=file_name,
+    )
     return {
-        "status": "stored",
-        "circular_id": circular_id,
-        "title": title,
-        "domain": domain,
-        "message": "Reference circular added to Policy Reference Library",
+        **stored,
+        "extracted_characters": len(circular_text),
+        "file_name": file_name,
     }
 
 

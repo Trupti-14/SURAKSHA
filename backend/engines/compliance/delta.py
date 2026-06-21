@@ -1,6 +1,7 @@
 import re
 
 from .advisory_mapping import match_department_advisory
+from .chroma_store import clean_reference_text
 from .scout import parse_circular_text
 
 
@@ -40,6 +41,60 @@ IT_OUTSOURCING_EVIDENCE = (
     "Audit report",
     "Exit strategy",
     "Management approval",
+)
+
+CONTROL_VERBS = (
+    "shall",
+    "must",
+    "should",
+    "ensure",
+    "maintain",
+    "submit",
+    "report",
+    "notify",
+    "retain",
+    "monitor",
+    "review",
+    "audit",
+    "escalate",
+    "test",
+    "approve",
+)
+
+CYBER_REFERENCE_TERMS = (
+    "cert-in",
+    "incident reporting",
+    "escalation",
+    "soc",
+    "logs",
+    "incident response",
+    "containment",
+    "root cause",
+    "closure",
+)
+
+DIGITAL_FRAUD_REFERENCE_TERMS = (
+    "fraud",
+    "customer notification",
+    "transaction logs",
+    "evidence",
+    "audit trail",
+    "reporting timeline",
+    "monitoring report",
+)
+
+NOISY_REFERENCE_TERMS = (
+    "circular reference date subject remarks",
+    "reference date subject remarks",
+    "acronyms",
+    "abbreviations",
+    "table of contents",
+    "list of circulars",
+    "repealed circular",
+    "superseded circular",
+    "appendix",
+    "annex",
+    "annexure",
 )
 
 DOMAIN_TERMS = {
@@ -138,6 +193,56 @@ def _strip_metadata_lines(text):
     return "\n".join(line for line in (text or "").splitlines() if not _is_metadata_line(line.strip()))
 
 
+def _has_control_verb(text):
+    lower = (text or "").lower()
+    return any(re.search(rf"\b{re.escape(verb)}\b", lower) for verb in CONTROL_VERBS)
+
+
+def _mostly_abbreviations(text):
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9&/-]*", text or "")
+    if len(tokens) < 4:
+        return False
+    abbreviation_count = sum(
+        1
+        for token in tokens
+        if token.upper() == token and len(re.sub(r"[^A-Z]", "", token)) >= 2
+    )
+    return abbreviation_count / max(1, len(tokens)) >= 0.6 and not _has_control_verb(text)
+
+
+def _looks_like_reference_table(text):
+    lower = (text or "").lower()
+    if _has_control_verb(text):
+        return False
+    date_count = len(re.findall(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{4}\b", text or ""))
+    reference_markers = sum(
+        marker in lower
+        for marker in (
+            "circular",
+            "reference",
+            "notification",
+            "remarks",
+            "repealed",
+            "superseded",
+            "withdrawn",
+        )
+    )
+    return date_count >= 2 and reference_markers >= 1
+
+
+def _is_noisy_reference_passage(text):
+    lower = (text or "").lower()
+    if any(term in lower for term in NOISY_REFERENCE_TERMS) and not _has_control_verb(text):
+        return True
+    if _mostly_abbreviations(text):
+        return True
+    if _looks_like_reference_table(text):
+        return True
+    if re.match(r"^(?:page\s*)?\d{1,4}(?:\s*(?:of|/)\s*\d{1,4})?$", (text or "").strip(), flags=re.I):
+        return True
+    return False
+
+
 def _dedupe(items):
     deduped = []
     seen = set()
@@ -156,6 +261,29 @@ def _sentences(text):
             continue
         chunks.extend(re.split(r"(?<=[.!?])\s+", line))
     return [_normalize_space(chunk) for chunk in chunks if len(_normalize_space(chunk)) >= 10]
+
+
+def _reference_passages(text):
+    cleaned = clean_reference_text(_strip_metadata_lines(text or ""))
+    passages = []
+
+    for block in re.split(r"\n\s*\n+", cleaned):
+        block = _normalize_space(block)
+        if len(block) < 35:
+            continue
+        if len(block) <= 650:
+            passages.append(block)
+            continue
+        passages.extend(_sentences(block))
+
+    if not passages:
+        passages = _sentences(cleaned)
+
+    return [
+        passage[:700].strip()
+        for passage in passages
+        if len(passage.strip()) >= 35 and not _is_noisy_reference_passage(passage)
+    ]
 
 
 def _domains_for_text(text):
@@ -288,8 +416,8 @@ def _confidence(change_type, relevant_doc):
 def _document_content(document):
     if isinstance(document, dict):
         text = document.get("content") or document.get("text") or document.get("summary") or ""
-        return _normalize_space(_strip_metadata_lines(text))
-    return _normalize_space(_strip_metadata_lines(str(document or "")))
+        return clean_reference_text(_strip_metadata_lines(text))
+    return clean_reference_text(_strip_metadata_lines(str(document or "")))
 
 
 def _document_id(document, index):
@@ -311,7 +439,7 @@ def _prepare_prior_documents(old_policy=None, prior_documents=None):
                 }
             )
 
-    cleaned_old_policy = _normalize_space(_strip_metadata_lines(old_policy)) if old_policy else ""
+    cleaned_old_policy = clean_reference_text(_strip_metadata_lines(old_policy)) if old_policy else ""
     if cleaned_old_policy and old_policy != NO_PRIOR_POLICY:
         documents.append(
             {
@@ -355,24 +483,81 @@ def _select_relevant_documents(documents, scout_result, obligations):
     return [document for _, document in scored[:3]]
 
 
-def _find_relevant_old_requirement(domain, documents):
-    terms = DOMAIN_TERMS.get(domain, ())
-    best_sentence = ""
+def _obligation_tokens(obligation):
+    return {
+        token
+        for token in re.findall(r"[a-z0-9-]{4,}", (obligation or "").lower())
+        if token
+        not in {
+            "banks",
+            "bank",
+            "shall",
+            "must",
+            "should",
+            "within",
+            "required",
+            "requirement",
+            "circular",
+        }
+    }
+
+
+def _context_terms_for_requirement(domain, obligation):
+    lower = (obligation or "").lower()
+    terms = list(DOMAIN_TERMS.get(domain, ()))
+
+    if domain == "cyber" or any(term in lower for term in ("cert-in", "cyber", "incident", "soc", "security log")):
+        terms.extend(CYBER_REFERENCE_TERMS)
+
+    if _is_digital_fraud_context(obligation):
+        terms.extend(DIGITAL_FRAUD_REFERENCE_TERMS)
+
+    return _dedupe(terms)
+
+
+def _reference_passage_score(passage, domain, obligation):
+    if _is_noisy_reference_passage(passage):
+        return -100
+
+    lower = passage.lower()
+    score = 0
+    control_matches = sum(1 for verb in CONTROL_VERBS if re.search(rf"\b{re.escape(verb)}\b", lower))
+    if control_matches:
+        score += 18 + min(12, control_matches * 3)
+    else:
+        score -= 10
+
+    for term in _context_terms_for_requirement(domain, obligation):
+        if term in lower:
+            score += 6
+
+    obligation_overlap = sum(1 for token in _obligation_tokens(obligation) if token in lower)
+    score += min(18, obligation_overlap * 2)
+
+    if any(term in lower for term in NOISY_REFERENCE_TERMS):
+        score -= 16
+    if _mostly_abbreviations(passage) or _looks_like_reference_table(passage):
+        score -= 40
+
+    return score
+
+
+def _find_relevant_old_requirement(domain, documents, obligation):
+    best_passage = ""
     best_document = None
     best_score = 0
 
     for document in documents:
-        for sentence in _sentences(document["content"]):
-            lower = sentence.lower()
-            score = sum(1 for term in terms if term in lower)
+        for passage in _reference_passages(document["content"]):
+            score = _reference_passage_score(passage, domain, obligation)
             if score > best_score:
-                best_sentence = sentence
+                best_passage = passage
                 best_document = document
                 best_score = score
 
     if best_score == 0:
         return NO_PRIOR_POLICY, None
-    return best_sentence, best_document
+    return best_passage, best_document
 
 
 def _evidence_terms_present(text):
@@ -741,7 +926,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
     seen = set()
     for obligation in obligations:
         domain = _domain_for_obligation(obligation)
-        old_requirement, source_document = _find_relevant_old_requirement(domain, relevant_documents)
+        old_requirement, source_document = _find_relevant_old_requirement(domain, relevant_documents, obligation)
         change_type = _change_type(old_requirement, obligation, domain)
         deadline = _primary_deadline(obligation)
         old_deadline = _primary_deadline(old_requirement) if old_requirement != NO_PRIOR_POLICY else None
@@ -761,6 +946,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "basis": _basis(change_type, old_requirement, obligation),
                 "severity": _severity(domain, change_type, deadline, old_deadline),
                 "old_requirement": old_requirement,
+                "existing_reference": old_requirement,
                 "new_requirement": obligation,
                 "affected_department": department,
                 "deadline": deadline,
@@ -797,6 +983,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "basis": "Scout obligations were compared with available regulatory memory and no strong delta was detected.",
                 "severity": "Low",
                 "old_requirement": "Relevant prior policy appears broadly aligned.",
+                "existing_reference": "Relevant prior policy appears broadly aligned.",
                 "new_requirement": fallback_obligation,
                 "affected_department": "Compliance Office",
                 "deadline": scout.get("deadline"),

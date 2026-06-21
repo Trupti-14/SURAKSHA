@@ -120,6 +120,23 @@ export async function addComplianceReference(payload) {
   );
 }
 
+export async function uploadComplianceReference({ title, domain, category, file }) {
+  const formData = new FormData();
+  formData.append("title", title);
+  formData.append("domain", domain);
+  formData.append("category", category || "");
+  formData.append("file", file);
+
+  return requestComplianceJson(
+    "/api/compliance/references/upload",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Reference circular upload could not be completed. Please confirm the backend is running and try again.",
+  );
+}
+
 export async function fetchComplianceActions() {
   return requestComplianceJson(
     "/api/compliance/actions",

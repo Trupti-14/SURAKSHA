@@ -7,6 +7,7 @@ import {
   addComplianceReference,
   analyzeComplianceCircular,
   fetchComplianceCirculars,
+  uploadComplianceReference,
 } from "../lib/compliance-api.js";
 
 const demoCircularText = `circular_id: RBI-NEW-2026-004
@@ -273,6 +274,8 @@ export default function Compliance() {
     status: "idle",
     message: "",
   });
+  const [referenceUploadFile, setReferenceUploadFile] = useState(null);
+  const [referenceFileInputKey, setReferenceFileInputKey] = useState(0);
   const [circularText, setCircularText] = useState("");
   const [fileName, setFileName] = useState("new-rbi-circular.txt");
   const [analysis, setAnalysis] = useState(null);
@@ -397,8 +400,14 @@ export default function Compliance() {
   function handleReferenceFieldChange(field, value) {
     setReferenceForm((current) => ({
       ...current,
+      fileName:
+        field === "circularText" && referenceUploadFile ? "" : current.fileName,
       [field]: value,
     }));
+    if (field === "circularText" && referenceUploadFile) {
+      setReferenceUploadFile(null);
+      setReferenceFileInputKey((key) => key + 1);
+    }
     setReferenceSaveState({ status: "idle", message: "" });
   }
 
@@ -409,18 +418,33 @@ export default function Compliance() {
       return;
     }
 
-    if (!file.name.toLowerCase().endsWith(".txt")) {
+    const lowerName = file.name.toLowerCase();
+
+    if (!lowerName.endsWith(".txt") && !lowerName.endsWith(".pdf")) {
       setReferenceSaveState({
         status: "error",
         message:
-          "Only TXT upload is supported here. Paste PDF/DOCX text manually for this prototype.",
+          "Only TXT or PDF upload is supported here. Paste DOCX text manually for this prototype.",
       });
+      setReferenceUploadFile(null);
       event.target.value = "";
+      return;
+    }
+
+    if (lowerName.endsWith(".pdf")) {
+      setReferenceUploadFile(file);
+      setReferenceForm((current) => ({
+        ...current,
+        fileName: file.name,
+        title: current.title || file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
+      }));
+      setReferenceSaveState({ status: "idle", message: "" });
       return;
     }
 
     try {
       const text = await file.text();
+      setReferenceUploadFile(null);
       setReferenceForm((current) => ({
         ...current,
         circularText: text,
@@ -429,6 +453,7 @@ export default function Compliance() {
       }));
       setReferenceSaveState({ status: "idle", message: "" });
     } catch {
+      setReferenceUploadFile(null);
       setReferenceSaveState({
         status: "error",
         message: "TXT file could not be read. Paste the reference text manually.",
@@ -441,16 +466,17 @@ export default function Compliance() {
     const domain = referenceForm.domain.trim();
     const category = referenceForm.category.trim();
     const referenceText = referenceForm.circularText.trim();
+    const isPdfUpload = referenceUploadFile?.name?.toLowerCase().endsWith(".pdf");
 
-    if (!title || !domain || !referenceText) {
+    if (!title || !domain || (!referenceText && !isPdfUpload)) {
       setReferenceSaveState({
         status: "error",
-        message: "Reference title, domain, and circular text are required.",
+        message: "Reference title, domain, and circular text or PDF file are required.",
       });
       return;
     }
 
-    if (referenceText.length < 100) {
+    if (!isPdfUpload && referenceText.length < 100) {
       setReferenceSaveState({
         status: "error",
         message: "Circular text must be at least 100 characters.",
@@ -460,13 +486,20 @@ export default function Compliance() {
 
     setReferenceSaveState({ status: "loading", message: "" });
 
-    const result = await addComplianceReference({
-      title,
-      domain,
-      category,
-      circular_text: referenceText,
-      file_name: referenceForm.fileName.trim(),
-    });
+    const result = isPdfUpload
+      ? await uploadComplianceReference({
+          title,
+          domain,
+          category,
+          file: referenceUploadFile,
+        })
+      : await addComplianceReference({
+          title,
+          domain,
+          category,
+          circular_text: referenceText,
+          file_name: referenceForm.fileName.trim(),
+        });
 
     if (result?.ok === false) {
       setReferenceSaveState({
@@ -479,9 +512,13 @@ export default function Compliance() {
     }
 
     setReferenceForm(initialReferenceForm);
+    setReferenceUploadFile(null);
+    setReferenceFileInputKey((key) => key + 1);
     setReferenceSaveState({
       status: "success",
-      message: "Reference circular added to Policy Reference Library.",
+      message: isPdfUpload
+        ? "PDF extracted and reference circular added to Policy Reference Library."
+        : "Reference circular added to Policy Reference Library.",
     });
     await loadPolicyReferences();
   }
@@ -1044,11 +1081,12 @@ export default function Compliance() {
               <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Optional TXT file upload
+                    Optional TXT/PDF upload
                   </label>
                   <input
+                    key={referenceFileInputKey}
                     type="file"
-                    accept=".txt,text/plain"
+                    accept=".txt,.pdf,text/plain,application/pdf"
                     onChange={handleReferenceFileChange}
                     className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700"
                   />
@@ -1066,7 +1104,9 @@ export default function Compliance() {
                   className="rounded-lg bg-sky-400 px-5 py-2.5 text-sm font-semibold text-[#06101f] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
                 >
                   {referenceSaveState.status === "loading"
-                    ? "Saving reference..."
+                    ? referenceUploadFile
+                      ? "Extracting PDF..."
+                      : "Saving reference..."
                     : "Save Reference"}
                 </button>
               </div>
