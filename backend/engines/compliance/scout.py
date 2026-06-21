@@ -61,9 +61,34 @@ METADATA_KEYS = {
     "issue_date",
     "regulator",
     "effective_from",
+    "effective_date",
     "status",
     "source_type",
 }
+
+DIGITAL_FRAUD_EVIDENCE = (
+    "Fraud reporting SOP",
+    "Branch escalation register",
+    "Customer notification proof",
+    "Transaction logs",
+    "Fraud monitoring report",
+    "Audit trail export",
+    "CERT-In escalation record",
+    "Owner sign-off",
+    "Closure timestamp",
+)
+
+IT_OUTSOURCING_EVIDENCE = (
+    "Outsourcing policy",
+    "Service provider due diligence checklist",
+    "Outsourcing agreement clause checklist",
+    "Cloud governance checklist",
+    "SOC escalation workflow evidence",
+    "BCP/DR test report",
+    "Audit report",
+    "Exit strategy",
+    "Management approval",
+)
 
 DEADLINE_PATTERNS = (
     r"within\s+\d{1,3}\s+(?:hours?|days?|months?|years?)",
@@ -86,7 +111,7 @@ DATE_PATTERNS = (
 )
 
 RISK_RULES = (
-    ("IT outsourcing", ("it outsourcing", "outsourced it", "outsourcing arrangement", "outsourcing agreement")),
+    ("IT outsourcing", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "outsourcing arrangement", "outsourcing agreement")),
     ("third-party risk", ("third-party", "service provider", "vendor", "due diligence", "subcontractor")),
     ("cloud outsourcing", ("cloud", "cloud service provider", "data portability", "secure deletion")),
     ("SOC outsourcing", ("security operations centre", "security operations center", "outsourced soc", "soc effectiveness")),
@@ -110,8 +135,8 @@ RISK_RULES = (
 )
 
 CATEGORY_RULES = (
-    ("IT Outsourcing / Third-Party Risk", ("it outsourcing", "outsourced it", "service provider", "third-party", "outsourcing agreement", "cloud service provider", "security operations centre", "security operations center")),
     ("Digital Fraud Reporting", ("digital fraud", "payment fraud", "fraud reporting")),
+    ("IT Outsourcing / Third-Party Risk", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "service provider", "third-party", "outsourcing agreement", "cloud service provider", "security operations centre", "security operations center")),
     ("Mule Account Monitoring", ("mule account", "mule", "suspicious account")),
     ("KYC / AML Compliance", ("kyc", "aml", "suspicious transaction", "dormant")),
     ("Cyber Incident Compliance", ("cyber incident", "cybersecurity", "security log")),
@@ -142,17 +167,17 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
-    ("Board-approved outsourcing policy and management approval/sign-off", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
-    ("Outsourcing inventory export with owner, provider, criticality, data, and exit dependency fields", ("central inventory", "inventory of outsourced it", "outsourced it services")),
-    ("Service provider due diligence checklist and risk assessment approval", ("due diligence", "service provider", "third-party", "subcontractor")),
-    ("Signed outsourcing agreement clause checklist, audit rights, RBI inspection access, termination rights, and exit strategy evidence", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
-    ("Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion", ("cloud", "data portability", "secure deletion", "cloud governance")),
-    ("SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
-    ("BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
-    ("Audit report, SLA monitoring report, risk review, closure evidence, and management sign-off", ("audit report", "sla monitoring", "risk review", "closure of observations")),
-    ("Fraud incident register with detection timestamp, reporting timestamp, customer impact, and evidence reference", ("fraud", "digital fraud", "payment fraud")),
-    ("Customer notification proof, notification timestamp, and exception log", ("notify", "customer notification", "affected customer", "grievance")),
-    ("Evidence archive inventory, retention configuration, and audit trail export", ("retain", "preserve", "evidence", "audit trail", "archive")),
+    ("Outsourcing policy and management approval", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
+    ("Outsourcing policy, audit report, and management approval", ("central inventory", "inventory of outsourced it", "outsourced it services")),
+    ("Service provider due diligence checklist and management approval", ("due diligence", "service provider", "third-party", "subcontractor")),
+    ("Outsourcing agreement clause checklist, exit strategy, and management approval", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
+    ("Cloud governance checklist and audit report", ("cloud", "data portability", "secure deletion", "cloud governance")),
+    ("SOC escalation workflow evidence and audit report", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
+    ("BCP/DR test report and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
+    ("Audit report and management approval", ("audit report", "sla monitoring", "risk review", "closure of observations")),
+    ("Fraud reporting SOP, transaction logs, fraud monitoring report, owner sign-off, and closure timestamp", ("fraud", "digital fraud", "payment fraud")),
+    ("Customer notification proof, transaction logs, owner sign-off, and closure timestamp", ("notify", "customer notification", "affected customer", "grievance")),
+    ("Transaction logs, audit trail export, owner sign-off, and closure timestamp", ("retain", "preserve", "evidence", "audit trail", "archive")),
     ("Monthly monitoring report, maker-checker approval, and submission proof", ("monthly", "report", "submit")),
     ("Branch escalation register with owner sign-off and closure timestamp", ("branch", "escalate", "branch-level")),
     ("KYC verification tracker, exception approvals, and customer communication proof", ("kyc", "aml", "verification", "suspicious transaction")),
@@ -186,6 +211,59 @@ def _dedupe(items):
             deduped.append(normalized)
             seen.add(key)
     return deduped
+
+
+def _is_digital_fraud_context(text, risk_keywords=None, category=None):
+    context = " ".join(
+        [
+            str(text or ""),
+            str(category or ""),
+            " ".join(str(item) for item in (risk_keywords or [])),
+        ]
+    ).lower()
+    return any(
+        term in context
+        for term in (
+            "digital fraud",
+            "payment fraud",
+            "cyber-enabled fraud",
+            "fraud reporting",
+            "fraud monitoring",
+            "mule account",
+        )
+    )
+
+
+def _is_it_outsourcing_context(text, risk_keywords=None, category=None):
+    context = " ".join(
+        [
+            str(text or ""),
+            str(category or ""),
+            " ".join(str(item) for item in (risk_keywords or [])),
+        ]
+    ).lower()
+    return any(
+        term in context
+        for term in (
+            "it outsourcing",
+            "outsourced it",
+            "outsourcing arrangement",
+            "outsourcing agreement",
+            "service provider due diligence",
+            "cloud governance",
+            "outsourced soc",
+            "security operations centre",
+            "security operations center",
+            "bcp/dr",
+            "disaster recovery",
+            "business continuity",
+            "third-party risk",
+            "central inventory",
+            "inventory of outsourced",
+            "board-approved it outsourcing policy",
+            "outsourcing policy",
+        )
+    )
 
 
 def _find_first(patterns, text):
@@ -340,8 +418,13 @@ def _detect_departments(text, obligations):
     return _dedupe(departments)
 
 
-def _detect_evidence(text, obligations):
+def _detect_evidence(text, obligations, risk_keywords=None, category=None):
     lower = f"{text} {' '.join(obligations)}".lower()
+    if _is_digital_fraud_context(lower, risk_keywords, category):
+        return list(DIGITAL_FRAUD_EVIDENCE)
+    if _is_it_outsourcing_context(lower, risk_keywords, category):
+        return list(IT_OUTSOURCING_EVIDENCE)
+
     evidence = []
     for evidence_item, terms in EVIDENCE_RULES:
         if any(term in lower for term in terms):
@@ -430,7 +513,7 @@ def parse_circular_text(circular_text=None, file_name=None):
     risk_keywords = _detect_risk_keywords(cleaned_text)
     category = _detect_category(cleaned_text, risk_keywords)
     departments = _detect_departments(cleaned_text, obligations)
-    evidence = _detect_evidence(cleaned_text, obligations)
+    evidence = _detect_evidence(cleaned_text, obligations, risk_keywords, category)
     title = _extract_title(text, file_name)
     primary_deadline = deadlines[0] if deadlines else None
     mapped_advisories = match_department_advisory(

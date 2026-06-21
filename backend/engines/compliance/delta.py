@@ -6,6 +6,42 @@ from .scout import parse_circular_text
 
 NO_PRIOR_POLICY = "No matching prior policy found."
 
+METADATA_KEYS = {
+    "circular_id",
+    "title",
+    "category",
+    "issue_date",
+    "regulator",
+    "effective_from",
+    "effective_date",
+    "status",
+    "source_type",
+}
+
+DIGITAL_FRAUD_EVIDENCE = (
+    "Fraud reporting SOP",
+    "Branch escalation register",
+    "Customer notification proof",
+    "Transaction logs",
+    "Fraud monitoring report",
+    "Audit trail export",
+    "CERT-In escalation record",
+    "Owner sign-off",
+    "Closure timestamp",
+)
+
+IT_OUTSOURCING_EVIDENCE = (
+    "Outsourcing policy",
+    "Service provider due diligence checklist",
+    "Outsourcing agreement clause checklist",
+    "Cloud governance checklist",
+    "SOC escalation workflow evidence",
+    "BCP/DR test report",
+    "Audit report",
+    "Exit strategy",
+    "Management approval",
+)
+
 DOMAIN_TERMS = {
     "it_inventory": ("central inventory", "outsourced it services", "service provider name", "technology owner", "criticality rating", "exit dependency"),
     "it_policy": ("board-approved", "it outsourcing policy", "senior management", "it function", "compliance department"),
@@ -47,17 +83,17 @@ DEPARTMENT_BY_DOMAIN = {
 }
 
 EVIDENCE_BY_DOMAIN = {
-    "it_inventory": "Outsourcing inventory export with provider, owner, criticality, data, contract expiry, and exit dependency fields",
-    "it_policy": "Board-approved outsourcing policy, role matrix, risk assessment approval, and management approval/sign-off",
-    "vendor_due_diligence": "Service provider due diligence checklist, risk assessment approval, concentration risk note, and subcontractor review",
-    "outsourcing_contract": "Signed outsourcing agreement clause checklist with audit rights, RBI inspection access, termination rights, and exit strategy evidence",
-    "cloud": "Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion",
-    "soc": "SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof",
-    "bcp_drp": "BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval",
-    "it_audit": "Audit report, SLA monitoring report, risk review, contract review, closure evidence, and management sign-off",
-    "fraud": "Fraud incident register, detection timestamp, reporting timestamp, customer impact note, and evidence reference",
-    "customer": "Customer notification proof, timestamp, delivery status, and exception approval",
-    "evidence": "Evidence retention register, archive proof, and audit trail export",
+    "it_inventory": "Outsourcing policy, audit report, and management approval",
+    "it_policy": "Outsourcing policy and management approval",
+    "vendor_due_diligence": "Service provider due diligence checklist and management approval",
+    "outsourcing_contract": "Outsourcing agreement clause checklist, exit strategy, and management approval",
+    "cloud": "Cloud governance checklist and audit report",
+    "soc": "SOC escalation workflow evidence and audit report",
+    "bcp_drp": "BCP/DR test report and management approval",
+    "it_audit": "Audit report and management approval",
+    "fraud": "Fraud reporting SOP, transaction logs, fraud monitoring report, owner sign-off, and closure timestamp",
+    "customer": "Customer notification proof, transaction logs, owner sign-off, and closure timestamp",
+    "evidence": "Transaction logs, audit trail export, owner sign-off, and closure timestamp",
     "reporting": "Regulatory report sample, submission acknowledgement, and Compliance Office sign-off",
     "branch": "Branch escalation register, owner sign-off, and closure timestamp",
     "kyc": "KYC/AML verification tracker, exception approval sample, and suspicious account review note",
@@ -91,6 +127,17 @@ def _normalize_space(value):
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def _is_metadata_line(line):
+    if ":" not in (line or ""):
+        return False
+    key = line.split(":", 1)[0].strip().lower()
+    return key in METADATA_KEYS
+
+
+def _strip_metadata_lines(text):
+    return "\n".join(line for line in (text or "").splitlines() if not _is_metadata_line(line.strip()))
+
+
 def _dedupe(items):
     deduped = []
     seen = set()
@@ -105,6 +152,8 @@ def _dedupe(items):
 def _sentences(text):
     chunks = []
     for line in (text or "").splitlines():
+        if _is_metadata_line(line.strip()):
+            continue
         chunks.extend(re.split(r"(?<=[.!?])\s+", line))
     return [_normalize_space(chunk) for chunk in chunks if len(_normalize_space(chunk)) >= 10]
 
@@ -238,8 +287,9 @@ def _confidence(change_type, relevant_doc):
 
 def _document_content(document):
     if isinstance(document, dict):
-        return _normalize_space(document.get("content") or document.get("text") or document.get("summary") or "")
-    return _normalize_space(str(document or ""))
+        text = document.get("content") or document.get("text") or document.get("summary") or ""
+        return _normalize_space(_strip_metadata_lines(text))
+    return _normalize_space(_strip_metadata_lines(str(document or "")))
 
 
 def _document_id(document, index):
@@ -261,11 +311,12 @@ def _prepare_prior_documents(old_policy=None, prior_documents=None):
                 }
             )
 
-    if old_policy and _normalize_space(old_policy) and old_policy != NO_PRIOR_POLICY:
+    cleaned_old_policy = _normalize_space(_strip_metadata_lines(old_policy)) if old_policy else ""
+    if cleaned_old_policy and old_policy != NO_PRIOR_POLICY:
         documents.append(
             {
                 "id": "provided_old_policy",
-                "content": _normalize_space(old_policy),
+                "content": cleaned_old_policy,
                 "source": "provided_policy",
             }
         )
@@ -342,6 +393,108 @@ def _reporting_frequency(text):
     return None
 
 
+def _scout_context(scout_result):
+    if not scout_result:
+        return ""
+    parts = [
+        scout_result.get("category") or "",
+        " ".join(scout_result.get("risk_keywords") or []),
+        " ".join(scout_result.get("obligations") or []),
+    ]
+    return " ".join(parts).lower()
+
+
+def _is_digital_fraud_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(
+        term in context
+        for term in (
+            "digital fraud",
+            "payment fraud",
+            "cyber-enabled fraud",
+            "fraud reporting",
+            "fraud monitoring",
+            "mule account",
+        )
+    )
+
+
+def _is_it_outsourcing_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(
+        term in context
+        for term in (
+            "it outsourcing",
+            "outsourced it",
+            "outsourcing arrangement",
+            "outsourcing agreement",
+            "service provider due diligence",
+            "cloud governance",
+            "outsourced soc",
+            "security operations centre",
+            "security operations center",
+            "bcp/dr",
+            "disaster recovery",
+            "business continuity",
+            "third-party risk",
+            "central inventory",
+            "inventory of outsourced",
+            "board-approved it outsourcing policy",
+            "outsourcing policy",
+        )
+    )
+
+
+def _join_evidence(items):
+    return ", ".join(_dedupe(items))
+
+
+def _digital_fraud_evidence_for_obligation(obligation):
+    lower = (obligation or "").lower()
+    evidence = []
+
+    if any(term in lower for term in ("cert-in", "cyber", "security incident")):
+        evidence.extend(("CERT-In escalation record", "Audit trail export", "Closure timestamp"))
+    if any(term in lower for term in ("branch", "branch-level")):
+        evidence.extend(("Branch escalation register", "Owner sign-off", "Closure timestamp"))
+    if "escalat" in lower and not evidence:
+        evidence.extend(("Branch escalation register", "Owner sign-off", "Closure timestamp"))
+    if any(term in lower for term in ("notify", "customer", "grievance")):
+        evidence.extend(("Customer notification proof", "Transaction logs", "Closure timestamp"))
+    if any(term in lower for term in ("retain", "preserve", "evidence", "audit trail", "log")):
+        evidence.extend(("Transaction logs", "Audit trail export", "Owner sign-off"))
+    if any(term in lower for term in ("monitor", "monthly", "submit")) or re.search(r"\breport(?:ing|s|ed)?\b", lower):
+        evidence.extend(("Fraud reporting SOP", "Fraud monitoring report", "Owner sign-off"))
+    if any(term in lower for term in ("fraud", "mule", "payment fraud", "digital fraud")):
+        evidence.extend(("Fraud reporting SOP", "Transaction logs", "Fraud monitoring report"))
+
+    return _join_evidence(evidence or DIGITAL_FRAUD_EVIDENCE)
+
+
+def _it_outsourcing_evidence_for_obligation(obligation):
+    lower = (obligation or "").lower()
+    evidence = []
+
+    if any(term in lower for term in ("outsourcing policy", "board-approved", "senior management", "central inventory", "inventory")):
+        evidence.extend(("Outsourcing policy", "Management approval"))
+    if any(term in lower for term in ("due diligence", "service provider", "third-party", "subcontractor", "concentration risk")):
+        evidence.extend(("Service provider due diligence checklist", "Management approval"))
+    if any(term in lower for term in ("outsourcing agreement", "contract", "audit rights", "rbi inspection", "termination rights")):
+        evidence.extend(("Outsourcing agreement clause checklist", "Management approval"))
+    if any(term in lower for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+        evidence.extend(("Cloud governance checklist", "Audit report"))
+    if any(term in lower for term in ("soc", "security operations centre", "security operations center", "alert rules", "incident response integration")):
+        evidence.extend(("SOC escalation workflow evidence", "Audit report"))
+    if any(term in lower for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")):
+        evidence.extend(("BCP/DR test report", "Management approval"))
+    if any(term in lower for term in ("audit reports", "periodic audits", "audit review", "sla monitoring", "closure of observations")):
+        evidence.extend(("Audit report", "Management approval"))
+    if any(term in lower for term in ("exit strategy", "transition plan")):
+        evidence.extend(("Exit strategy", "Outsourcing agreement clause checklist", "Management approval"))
+
+    return _join_evidence(evidence or IT_OUTSOURCING_EVIDENCE)
+
+
 def _change_type(old_requirement, new_requirement, domain):
     if old_requirement == NO_PRIOR_POLICY:
         return "missing_policy"
@@ -373,20 +526,53 @@ def _change_type(old_requirement, new_requirement, domain):
     return "new_obligation"
 
 
+def _gap_dimensions(new_requirement):
+    lower = (new_requirement or "").lower()
+    dimensions = []
+    deadline = _primary_deadline(new_requirement)
+
+    if deadline:
+        dimensions.append(f"timeline ({deadline})")
+    if any(term in lower for term in ("report", "submit", "monthly", "quarterly", "rbi")):
+        dimensions.append("reporting workflow")
+    if any(term in lower for term in ("evidence", "proof", "log", "record", "retain", "preserve")):
+        dimensions.append("evidence capture")
+    if any(term in lower for term in ("retain", "preserve", "archive", "for ")) and any(term in lower for term in ("year", "month", "day")):
+        dimensions.append("retention period")
+    if any(term in lower for term in ("owner", "sign-off", "approval", "responsibility", "accountable")):
+        dimensions.append("owner sign-off")
+    if any(term in lower for term in ("escalat", "branch", "cert-in", "incident response")):
+        dimensions.append("escalation workflow")
+    if any(term in lower for term in ("audit trail", "audit log", "audit report", "audit rights", "periodic audits")):
+        dimensions.append("audit trail")
+    if any(term in lower for term in ("notify", "customer notification", "affected customer")):
+        dimensions.append("customer notification proof")
+    if any(term in lower for term in ("agreement", "contract", "clause", "termination rights", "exit strategy")):
+        dimensions.append("agreement clause review")
+    if any(term in lower for term in ("due diligence", "service provider", "third-party")):
+        dimensions.append("service provider due diligence")
+
+    return _dedupe(dimensions) or ["specific workflow, evidence, owner, and audit trail"]
+
+
 def _gap_message(change_type, old_requirement, new_requirement, domain):
+    dimensions = ", ".join(_gap_dimensions(new_requirement))
+    old_deadline = _primary_deadline(old_requirement) if old_requirement != NO_PRIOR_POLICY else None
+    new_deadline = _primary_deadline(new_requirement)
+
     if change_type == "deadline_changed":
-        return f"Existing {domain} policy has a different deadline than the new RBI circular requirement."
+        return f"Existing {domain} process uses timeline {old_deadline or 'not captured'} but new circular requires {new_deadline}; timeline update is missing."
     if change_type == "missing_policy":
-        return f"No matching internal policy found for: {new_requirement}"
+        return f"No matching internal {domain} policy found; missing {dimensions} required by: {new_requirement}"
     if change_type == "reporting_frequency_changed":
-        return f"Existing {domain} reporting process does not match the new reporting frequency."
+        return f"Existing {domain} reporting workflow does not capture the required frequency in: {new_requirement}"
     if change_type == "evidence_required":
-        return f"Existing {domain} policy does not cover the evidence or retention requirement."
+        return f"Existing {domain} policy lacks {dimensions} required by: {new_requirement}"
     if change_type == "department_owner_missing":
-        return f"Existing process does not define the required department owner or escalation path."
+        return f"Existing process does not define owner sign-off or escalation workflow required by: {new_requirement}"
     if change_type == "audit_trail_missing":
-        return f"Existing process does not include the required audit trail controls."
-    return f"Existing policy is incomplete for the new RBI obligation: {new_requirement}"
+        return f"Existing process does not include the required audit trail for: {new_requirement}"
+    return f"Existing {domain} process lacks {dimensions} required by: {new_requirement}"
 
 
 def _department_for_gap(domain, obligation):
@@ -400,8 +586,12 @@ def _department_for_gap(domain, obligation):
     return DEPARTMENT_BY_DOMAIN.get(domain, "Compliance Office")
 
 
-def _evidence_for_gap(domain, obligation):
+def _evidence_for_gap(domain, obligation, scout=None):
     lower = (obligation or "").lower()
+    if _is_digital_fraud_context(obligation, scout):
+        return _digital_fraud_evidence_for_obligation(obligation)
+    if _is_it_outsourcing_context(obligation, scout):
+        return _it_outsourcing_evidence_for_obligation(obligation)
     if "customer notification" in lower or "affected customer" in lower or "notify" in lower:
         return "Customer notification proof, timestamp, delivery status, and exception approval"
     if domain == "reporting" and any(term in lower for term in ("monthly", "report", "submit")):
@@ -574,7 +764,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "new_requirement": obligation,
                 "affected_department": department,
                 "deadline": deadline,
-                "evidence_required": _evidence_for_gap(domain, obligation),
+                "evidence_required": _evidence_for_gap(domain, obligation, scout),
                 "confidence": _confidence(change_type, source_document),
                 "source": source_document["id"] if source_document else "No matching prior policy found",
                 "change_type": change_type,

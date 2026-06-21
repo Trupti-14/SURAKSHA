@@ -4,6 +4,30 @@ from .advisory_mapping import match_department_advisory
 from .scout import parse_circular_text
 
 
+DIGITAL_FRAUD_EVIDENCE = (
+    "Fraud reporting SOP",
+    "Branch escalation register",
+    "Customer notification proof",
+    "Transaction logs",
+    "Fraud monitoring report",
+    "Audit trail export",
+    "CERT-In escalation record",
+    "Owner sign-off",
+    "Closure timestamp",
+)
+
+IT_OUTSOURCING_EVIDENCE = (
+    "Outsourcing policy",
+    "Service provider due diligence checklist",
+    "Outsourcing agreement clause checklist",
+    "Cloud governance checklist",
+    "SOC escalation workflow evidence",
+    "BCP/DR test report",
+    "Audit report",
+    "Exit strategy",
+    "Management approval",
+)
+
 DEPARTMENT_RULES = (
     ("IT Vertical", ("central inventory", "inventory shall include", "outsourced it services", "it outsourcing", "application maintenance", "data centre", "network services", "technology owner", "cloud governance")),
     ("Procurement & Vendor Management", ("service provider", "vendor", "third-party", "due diligence", "subcontractor", "cloud provider", "concentration risk")),
@@ -25,19 +49,19 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
-    ("Board-approved outsourcing policy and management approval/sign-off", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
-    ("BCP/DR test report with gaps, corrective actions, recovery objectives, and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
-    ("Outsourcing inventory export with provider, owner, criticality, data, contract expiry, and exit dependency fields", ("central inventory", "inventory shall include", "inventory of outsourced it", "outsourced it services")),
-    ("Signed outsourcing agreement clause checklist with audit rights, RBI inspection access, termination rights, and exit strategy evidence", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
-    ("Cloud governance checklist covering access control, logging, monitoring, DR, data portability, and secure deletion", ("cloud", "data portability", "secure deletion", "cloud governance")),
-    ("SOC escalation workflow evidence, alert rule review, logs, metadata, and incident response integration proof", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
+    ("Outsourcing policy and management approval", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
+    ("BCP/DR test report and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
+    ("Outsourcing policy, audit report, and management approval", ("central inventory", "inventory shall include", "inventory of outsourced it", "outsourced it services")),
+    ("Outsourcing agreement clause checklist, exit strategy, and management approval", ("outsourcing agreement", "legally binding", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
+    ("Cloud governance checklist and audit report", ("cloud", "data portability", "secure deletion", "cloud governance")),
+    ("SOC escalation workflow evidence and audit report", ("security operations centre", "security operations center", "soc", "alert rules", "metadata", "incident response integration")),
     ("SLA monitoring report, service review minutes, and closure evidence", ("service standards", "sla monitoring", "sla", "service level")),
     ("Exit strategy and transition plan with management approval/sign-off", ("exit strategy", "termination rights", "transition plan")),
     ("Audit report, risk review, contract review, closure evidence, and management sign-off", ("audit report", "periodic audits", "audit review", "contract reviews", "closure of observations", "management approvals")),
     ("Service provider due diligence checklist, risk assessment approval, concentration risk note, and subcontractor review", ("due diligence", "service provider", "third-party", "subcontractor")),
-    ("Fraud incident register, reporting timestamp, customer impact note, and evidence reference", ("fraud", "digital fraud", "payment fraud", "mule")),
+    ("Fraud reporting SOP, transaction logs, fraud monitoring report, owner sign-off, and closure timestamp", ("fraud", "digital fraud", "payment fraud", "mule")),
     ("Customer notification proof, delivery timestamp, and exception approval log", ("notify", "customer notification", "affected customer", "grievance", "complaint")),
-    ("Evidence archive inventory, retention proof, and audit trail export", ("retain", "preserve", "evidence", "audit trail", "archive")),
+    ("Transaction logs, audit trail export, owner sign-off, and closure timestamp", ("retain", "preserve", "evidence", "audit trail", "archive")),
     ("Monthly report sample, maker-checker approval, and Compliance Office submission proof", ("monthly", "report", "submit")),
     ("Branch escalation register, owner sign-off, and closure timestamp", ("branch", "escalate", "branch-level")),
     ("Security log export, incident ticket, digital evidence hash, and containment note", ("cyber", "security", "digital evidence", "incident")),
@@ -48,6 +72,62 @@ EVIDENCE_RULES = (
 
 def _normalize_space(value):
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _scout_context(scout_result):
+    if not scout_result:
+        return ""
+    parts = [
+        scout_result.get("category") or "",
+        " ".join(scout_result.get("risk_keywords") or []),
+        " ".join(scout_result.get("obligations") or []),
+    ]
+    return " ".join(parts).lower()
+
+
+def _is_digital_fraud_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(
+        term in context
+        for term in (
+            "digital fraud",
+            "payment fraud",
+            "cyber-enabled fraud",
+            "fraud reporting",
+            "fraud monitoring",
+            "mule account",
+        )
+    )
+
+
+def _is_it_outsourcing_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(
+        term in context
+        for term in (
+            "it outsourcing",
+            "outsourced it",
+            "outsourcing arrangement",
+            "outsourcing agreement",
+            "service provider due diligence",
+            "cloud governance",
+            "outsourced soc",
+            "security operations centre",
+            "security operations center",
+            "bcp/dr",
+            "disaster recovery",
+            "business continuity",
+            "third-party risk",
+            "central inventory",
+            "inventory of outsourced",
+            "board-approved it outsourcing policy",
+            "outsourcing policy",
+        )
+    )
+
+
+def _join_evidence(items):
+    return ", ".join(dict.fromkeys(item for item in items if item))
 
 
 def _dedupe_action_points(action_points):
@@ -279,7 +359,65 @@ def _department_from_advisory(advisory, fallback_department):
     return fallback_department or "Compliance Office"
 
 
-def _evidence_for_text(text, fallback=None):
+def _digital_fraud_evidence_for_text(text):
+    lower = (text or "").lower()
+    evidence = []
+
+    if any(term in lower for term in ("cert-in", "cyber", "security incident")):
+        evidence.extend(("CERT-In escalation record", "Audit trail export", "Closure timestamp"))
+    if any(term in lower for term in ("branch", "branch-level")):
+        evidence.extend(("Branch escalation register", "Owner sign-off", "Closure timestamp"))
+    if "escalat" in lower and not evidence:
+        evidence.extend(("Branch escalation register", "Owner sign-off", "Closure timestamp"))
+    if any(term in lower for term in ("notify", "customer", "grievance")):
+        evidence.extend(("Customer notification proof", "Transaction logs", "Closure timestamp"))
+    if any(term in lower for term in ("retain", "preserve", "evidence", "audit trail", "log")):
+        evidence.extend(("Transaction logs", "Audit trail export", "Owner sign-off"))
+    if any(term in lower for term in ("monitor", "monthly", "submit")) or re.search(r"\breport(?:ing|s|ed)?\b", lower):
+        evidence.extend(("Fraud reporting SOP", "Fraud monitoring report", "Owner sign-off"))
+    if any(term in lower for term in ("fraud", "mule", "payment fraud", "digital fraud")):
+        evidence.extend(("Fraud reporting SOP", "Transaction logs", "Fraud monitoring report"))
+
+    return _join_evidence(evidence or DIGITAL_FRAUD_EVIDENCE)
+
+
+def _it_outsourcing_evidence_for_text(text):
+    lower = (text or "").lower()
+    evidence = []
+
+    if any(term in lower for term in ("outsourcing policy", "board-approved", "senior management", "central inventory", "inventory")):
+        evidence.extend(("Outsourcing policy", "Management approval"))
+    if any(term in lower for term in ("due diligence", "service provider", "third-party", "subcontractor", "concentration risk")):
+        evidence.extend(("Service provider due diligence checklist", "Management approval"))
+    if any(term in lower for term in ("outsourcing agreement", "contract", "audit rights", "rbi inspection", "termination rights")):
+        evidence.extend(("Outsourcing agreement clause checklist", "Management approval"))
+    if any(term in lower for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+        evidence.extend(("Cloud governance checklist", "Audit report"))
+    if any(term in lower for term in ("soc", "security operations centre", "security operations center", "alert rules", "incident response integration")):
+        evidence.extend(("SOC escalation workflow evidence", "Audit report"))
+    if any(term in lower for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")):
+        evidence.extend(("BCP/DR test report", "Management approval"))
+    if any(term in lower for term in ("audit reports", "periodic audits", "audit review", "sla monitoring", "closure of observations")):
+        evidence.extend(("Audit report", "Management approval"))
+    if any(term in lower for term in ("exit strategy", "transition plan")):
+        evidence.extend(("Exit strategy", "Outsourcing agreement clause checklist", "Management approval"))
+
+    return _join_evidence(evidence or IT_OUTSOURCING_EVIDENCE)
+
+
+def _strict_evidence_for_context(text, scout_result=None):
+    if _is_digital_fraud_context(text, scout_result):
+        return _digital_fraud_evidence_for_text(text)
+    if _is_it_outsourcing_context(text, scout_result):
+        return _it_outsourcing_evidence_for_text(text)
+    return None
+
+
+def _evidence_for_text(text, fallback=None, scout_result=None):
+    strict_evidence = _strict_evidence_for_context(text, scout_result)
+    if strict_evidence:
+        return strict_evidence
+
     lower = (text or "").lower()
     evidence = []
     for evidence_item, terms in EVIDENCE_RULES:
@@ -321,8 +459,40 @@ def _priority(deadline_days, text, severity=None):
     return score, label
 
 
-def _action_template(text, change_type=None):
+def _action_template(text, change_type=None, scout_result=None):
     lower = (text or "").lower()
+    if _is_digital_fraud_context(text, scout_result):
+        if any(term in lower for term in ("cert-in", "cyber", "security incident")):
+            return "Configure CERT-In escalation path with audit trail export and closure timestamp."
+        if any(term in lower for term in ("branch", "branch-level")):
+            return "Maintain branch escalation register with owner sign-off and closure timestamp."
+        if "escalat" in lower:
+            return "Configure escalation path with owner sign-off and closure timestamp."
+        if any(term in lower for term in ("notify", "customer", "grievance")):
+            return "Create customer notification workflow with proof capture and closure timestamp."
+        if any(term in lower for term in ("retain", "preserve", "evidence", "audit trail", "log")):
+            return "Maintain transaction logs and audit trail export for digital fraud evidence."
+        if any(term in lower for term in ("monitor", "monthly", "report", "submit")):
+            return "Submit fraud monitoring report with owner sign-off."
+        return "Update fraud reporting SOP with transaction log evidence and owner sign-off."
+
+    if _is_it_outsourcing_context(text, scout_result):
+        if any(term in lower for term in ("soc", "security operations centre", "security operations center", "alert rules", "incident response integration")):
+            return "Configure SOC escalation workflow evidence and audit report review."
+        if any(term in lower for term in ("cloud", "data portability", "secure deletion", "cloud governance")):
+            return "Update cloud governance checklist with audit report review."
+        if any(term in lower for term in ("business continuity", "disaster recovery", "bcp", "drp", "resilience")):
+            return "Submit BCP/DR test report with management approval."
+        if any(term in lower for term in ("outsourcing agreement", "contract", "audit rights", "rbi inspection", "termination rights")):
+            return "Review outsourcing agreement clauses for audit rights, inspection access, termination, and exit."
+        if any(term in lower for term in ("due diligence", "service provider", "third-party", "subcontractor", "concentration risk")):
+            return "Update service provider due diligence checklist with management approval."
+        if any(term in lower for term in ("audit reports", "periodic audits", "audit review", "sla monitoring", "closure of observations")):
+            return "Submit outsourcing audit report with management approval."
+        if any(term in lower for term in ("exit strategy", "transition plan")):
+            return "Create exit strategy and review related outsourcing agreement clauses."
+        return "Update outsourcing policy with owner sign-off and management approval."
+
     if "central inventory" in lower or "inventory shall include" in lower or "inventory of outsourced" in lower:
         return "Create and maintain the central outsourced IT services inventory with owner, provider, criticality, data, contract, and exit fields."
     if "board-approved it outsourcing policy" in lower or "outsourcing policy" in lower:
@@ -330,7 +500,7 @@ def _action_template(text, change_type=None):
     if "outsourcing agreement" in lower or "audit rights" in lower or "rbi inspection" in lower:
         return "Update the outsourcing agreement clause checklist for audit rights, RBI inspection access, incident reporting, termination rights, and exit strategy."
     if "cloud" in lower or "data portability" in lower or "secure deletion" in lower:
-        return "Implement the cloud governance checklist for access control, logging, monitoring, DR, data portability, and secure deletion."
+        return "Update the cloud governance checklist for access control, logging, monitoring, DR, data portability, and secure deletion."
     if "security operations centre" in lower or "security operations center" in lower or "soc" in lower or "alert rules" in lower:
         return "Document outsourced SOC oversight with alert rule review, log coverage, escalation workflow, and incident response integration."
     if "cyber incidents" in lower and ("third-party" in lower or "service provider" in lower or "escalat" in lower):
@@ -350,7 +520,7 @@ def _action_template(text, change_type=None):
     if "notify" in lower or "customer notification" in lower:
         return "Create customer notification workflow with timestamped proof and exception approval tracking."
     if "retain" in lower or "preserve" in lower or "evidence" in lower:
-        return "Implement evidence retention control with archive inventory and audit trail export."
+        return "Maintain evidence retention register with archive inventory and audit trail export."
     if "branch" in lower or "escalat" in lower:
         return "Define branch-level escalation path with owner assignment, SLA, and closure evidence."
     if "audit trail" in lower or "audit" in lower:
@@ -361,12 +531,22 @@ def _action_template(text, change_type=None):
         return "Configure cybersecurity evidence capture and incident review workflow for the circular requirement."
     if change_type == "department_owner_missing":
         return "Assign department owner and escalation path for the new compliance requirement."
-    return f"Implement compliance control for: {_normalize_space(text)[:180]}"
+    if any(term in lower for term in ("report", "submit", "monitor")):
+        return f"Submit monitoring report for: {_normalize_space(text)[:160]}"
+    if any(term in lower for term in ("workflow", "process", "notify")):
+        return f"Create workflow for: {_normalize_space(text)[:160]}"
+    if any(term in lower for term in ("escalat", "incident")):
+        return f"Configure escalation path for: {_normalize_space(text)[:160]}"
+    if any(term in lower for term in ("owner", "sign-off", "approval")):
+        return f"Define owner sign-off for: {_normalize_space(text)[:160]}"
+    if any(term in lower for term in ("agreement", "contract", "clause")):
+        return f"Review agreement clauses for: {_normalize_space(text)[:160]}"
+    return f"Update SOP for: {_normalize_space(text)[:160]}"
 
 
 def _acceptance_criteria(action, evidence_required, deadline):
     return [
-        f"Approved SOP/control update exists for: {action}",
+        f"Approved SOP or workflow update exists for: {action}",
         f"Evidence available: {evidence_required}",
         f"Deadline/SLA captured as {deadline}",
         "Compliance Office has reviewed and marked the MAP ready for evidence verification.",
@@ -380,8 +560,9 @@ def _map_from_gap(gap, index, scout_result=None):
     fallback_department = gap.get("affected_department") or _department_for_text(new_requirement)
     advisory = _advisory_from_gap_or_match(gap, new_requirement, scout_result, fallback_department)
     department = _department_from_advisory(advisory, fallback_department)
-    evidence_required = gap.get("evidence_required") or _evidence_for_text(new_requirement)
-    action = _action_template(new_requirement, gap.get("change_type"))
+    strict_evidence = _strict_evidence_for_context(new_requirement, scout_result)
+    evidence_required = strict_evidence or gap.get("evidence_required") or _evidence_for_text(new_requirement, scout_result=scout_result)
+    action = _action_template(new_requirement, gap.get("change_type"), scout_result)
     priority_score, priority_label = _priority(deadline_days, new_requirement, gap.get("severity"))
 
     return {
@@ -414,8 +595,8 @@ def _map_from_obligation(obligation, index, scout_result):
     fallback_department = _department_for_text(obligation)
     advisory = _advisory_from_gap_or_match(None, obligation, scout_result, fallback_department)
     department = _department_from_advisory(advisory, fallback_department)
-    evidence_required = _evidence_for_text(obligation)
-    action = _action_template(obligation)
+    evidence_required = _evidence_for_text(obligation, scout_result=scout_result)
+    action = _action_template(obligation, scout_result=scout_result)
     priority_score, priority_label = _priority(deadline_days, obligation)
 
     return {
