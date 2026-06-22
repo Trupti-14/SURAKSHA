@@ -467,7 +467,7 @@ def run_compliance_workflow(
             prior_documents=prior_documents,
         ) or {}
         engine_notes.extend(delta_result.get("engine_notes", []))
-        engine_notes.append("Semantic Delta Agent returned deterministic structured policy gaps.")
+        engine_notes.append("Semantic Delta Agent returned structured policy gaps with safe fallback handling.")
     except Exception as exc:
         delta_result = {
             "gap_found": bool(obligations),

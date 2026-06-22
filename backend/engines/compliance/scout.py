@@ -5,6 +5,20 @@ from pathlib import Path
 
 from .advisory_mapping import match_department_advisory
 
+try:
+    from .local_llm import extract_circular_fields, get_llm_mode, get_ollama_model, is_llm_enabled
+except Exception:
+    extract_circular_fields = None
+
+    def get_llm_mode():
+        return "rules"
+
+    def get_ollama_model():
+        return "unavailable"
+
+    def is_llm_enabled():
+        return False
+
 
 CIRCULARS_DIR = Path(__file__).resolve().parents[2] / "data" / "circulars"
 
@@ -73,6 +87,28 @@ METADATA_KEYS = {
     "effective_date",
     "status",
     "source_type",
+}
+
+LLM_STOPWORDS = {
+    "bank",
+    "banks",
+    "shall",
+    "must",
+    "should",
+    "with",
+    "within",
+    "from",
+    "that",
+    "this",
+    "they",
+    "their",
+    "there",
+    "where",
+    "which",
+    "circular",
+    "requirement",
+    "requirements",
+    "compliance",
 }
 
 DIGITAL_FRAUD_EVIDENCE = (
@@ -681,6 +717,110 @@ def _build_summary(title, category, obligations, departments, deadline):
     )
 
 
+def _source_overlap_count(value, source_text):
+    source_lower = (source_text or "").lower()
+    tokens = {
+        token
+        for token in re.findall(r"[a-z0-9-]{4,}", (value or "").lower())
+        if token not in LLM_STOPWORDS
+    }
+    return sum(1 for token in tokens if token in source_lower)
+
+
+def _coerce_llm_text(value):
+    if isinstance(value, dict):
+        for key in ("obligation", "requirement", "text", "summary", "description"):
+            if value.get(key):
+                return str(value.get(key))
+        return ""
+    return str(value or "")
+
+
+def _sanitize_llm_obligations(raw_obligations, source_text):
+    if not isinstance(raw_obligations, list):
+        return []
+
+    obligations = []
+    for raw_item in raw_obligations[:20]:
+        cleaned = _normalize_obligation(_coerce_llm_text(raw_item))
+        if not cleaned or _is_metadata_line(cleaned):
+            continue
+        if _is_incomplete_obligation(cleaned):
+            continue
+        if not _has_obligation_phrase(cleaned):
+            continue
+        if _source_overlap_count(cleaned, source_text) < 2:
+            continue
+        obligations.append(cleaned)
+    return _dedupe(obligations)[:12]
+
+
+def _sanitize_llm_list(raw_items, source_text=None, max_items=8):
+    if isinstance(raw_items, str):
+        items = re.split(r"[,;\n]+", raw_items)
+    elif isinstance(raw_items, list):
+        items = raw_items
+    else:
+        return []
+
+    sanitized = []
+    for raw_item in items[:20]:
+        text = _normalize_space(_coerce_llm_text(raw_item)).strip(" .;:-")
+        if not text or len(text) > 100 or any(char in text for char in "{}[]"):
+            continue
+        if source_text and _source_overlap_count(text, source_text) == 0:
+            continue
+        sanitized.append(text)
+    return _dedupe(sanitized)[:max_items]
+
+
+def _sanitize_llm_summary(summary, source_text):
+    text = _normalize_space(summary)
+    if len(text) < 40 or len(text) > 700:
+        return ""
+    if _source_overlap_count(text, source_text) < 3:
+        return ""
+    return text
+
+
+def _try_local_llm_extract(cleaned_text, engine_notes):
+    mode = get_llm_mode()
+    if mode == "rules":
+        engine_notes.append("Local LLM extraction skipped because COMPLIANCE_LLM_MODE=rules.")
+        return {}
+    if not is_llm_enabled() or extract_circular_fields is None:
+        engine_notes.append("Local LLM extraction adapter unavailable; deterministic Scout fallback used.")
+        return {}
+
+    payload = extract_circular_fields(cleaned_text)
+    if not isinstance(payload, dict):
+        engine_notes.append(
+            f"Local LLM extraction unavailable in {mode} mode for model {get_ollama_model()}; deterministic Scout fallback used."
+        )
+        return {}
+
+    obligations = _sanitize_llm_obligations(payload.get("key_obligations"), cleaned_text)
+    if not obligations:
+        engine_notes.append("Local LLM extraction returned weak or malformed obligations; deterministic Scout fallback used.")
+        return {}
+
+    deadlines = _sanitize_llm_list(payload.get("deadlines"), source_text=cleaned_text, max_items=8)
+    departments = _sanitize_llm_list(payload.get("impacted_departments"), max_items=8)
+    domain = _normalize_space(payload.get("domain"))
+    summary = _sanitize_llm_summary(payload.get("summary"), cleaned_text)
+
+    engine_notes.append(
+        f"Local LLM extraction accepted from Ollama model {get_ollama_model()} with deterministic validation."
+    )
+    return {
+        "summary": summary,
+        "obligations": obligations,
+        "deadlines": deadlines,
+        "domain": domain[:140],
+        "departments": departments,
+    }
+
+
 def scan_circulars():
     circulars = []
 
@@ -714,7 +854,7 @@ def get_circular_by_id(circular_id):
 def parse_circular_text(circular_text=None, file_name=None):
     text = _normalize_pdf_text(circular_text or "")
     cleaned_text = _normalize_space(text)
-    engine_notes = ["Scout Parser used deterministic offline extraction."]
+    engine_notes = ["Scout Parser used local extraction with deterministic offline fallback."]
 
     if not cleaned_text or len(cleaned_text) < 20:
         engine_notes.append("Input circular text was empty or too short; safe fallback metadata returned.")
@@ -744,11 +884,24 @@ def parse_circular_text(circular_text=None, file_name=None):
             "engine_notes": engine_notes,
         }
 
-    deadlines = _extract_deadlines(cleaned_text)
-    obligations = extract_obligations(text)
+    llm_extract = _try_local_llm_extract(cleaned_text, engine_notes)
+    deterministic_obligations = extract_obligations(text)
+    obligations = deterministic_obligations
+    if llm_extract.get("obligations"):
+        obligations = _dedupe(llm_extract["obligations"] + deterministic_obligations)[:16]
+
+    deadlines = _dedupe((llm_extract.get("deadlines") or []) + _extract_deadlines(cleaned_text))
     risk_keywords = _detect_risk_keywords(cleaned_text)
     category = _detect_category(cleaned_text, risk_keywords)
+    if (
+        category == "General Regulatory Compliance"
+        and llm_extract.get("domain")
+        and not _is_pso_payment_context(cleaned_text, risk_keywords)
+    ):
+        category = llm_extract["domain"]
     departments = _detect_departments(cleaned_text, obligations)
+    if llm_extract.get("departments") and not _is_pso_payment_context(cleaned_text, risk_keywords, category):
+        departments = _dedupe(llm_extract["departments"] + departments)[:8]
     evidence = _detect_evidence(cleaned_text, obligations, risk_keywords, category)
     title = _extract_title(text, file_name)
     primary_deadline = deadlines[0] if deadlines else None
@@ -782,7 +935,8 @@ def parse_circular_text(circular_text=None, file_name=None):
         "evidence_required": evidence,
         "affected_departments": affected_departments,
         "mapped_advisories": mapped_advisories,
-        "normalized_summary": _build_summary(title, category, obligations, affected_departments, primary_deadline),
+        "normalized_summary": llm_extract.get("summary")
+        or _build_summary(title, category, obligations, affected_departments, primary_deadline),
         "raw_text_excerpt": cleaned_text[:500],
         "engine_notes": engine_notes,
     }

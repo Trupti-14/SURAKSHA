@@ -4,9 +4,33 @@ from .advisory_mapping import match_department_advisory
 from .chroma_store import clean_reference_text
 from .scout import parse_circular_text
 
+try:
+    from .local_llm import compare_obligation_to_reference, get_llm_mode, get_ollama_model, is_llm_enabled
+except Exception:
+    compare_obligation_to_reference = None
+
+    def get_llm_mode():
+        return "rules"
+
+    def get_ollama_model():
+        return "unavailable"
+
+    def is_llm_enabled():
+        return False
+
 
 NO_PRIOR_POLICY = "No matching prior policy found."
 NO_CLOSE_PSO_REFERENCE = "No closely matching approved PSO reference found in the current policy library."
+LLM_CHANGE_TYPES = {
+    "missing_policy",
+    "deadline_changed",
+    "reporting_frequency_changed",
+    "evidence_required",
+    "department_owner_missing",
+    "audit_trail_missing",
+    "new_obligation",
+    "manual_review",
+}
 
 METADATA_KEYS = {
     "circular_id",
@@ -1335,6 +1359,72 @@ def _basis(change_type, old_requirement, new_requirement):
     return f"Compared old requirement [{old_requirement}] with new requirement [{new_requirement}]."
 
 
+def _llm_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lower = value.strip().lower()
+        if lower in {"true", "yes", "y", "1"}:
+            return True
+        if lower in {"false", "no", "n", "0"}:
+            return False
+    return None
+
+
+def _llm_confidence(value):
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return min(max(confidence, 0.0), 1.0)
+
+
+def _is_concrete_llm_gap(summary, obligation):
+    text = _normalize_space(summary)
+    lower = text.lower()
+    if len(text) < 40 or len(text) > 500:
+        return False
+    if any(term in lower for term in ("no gap", "no material gap", "fully aligned", "already aligned", "compliant")):
+        return False
+    if any(term in lower for term in ("unclear", "not enough information", "cannot determine", "maybe", "might")):
+        return False
+    overlap = sum(1 for token in _obligation_tokens(obligation) if token in lower)
+    return overlap >= 2
+
+
+def _try_local_llm_delta(obligation, old_requirement, domain):
+    if get_llm_mode() == "rules" or not is_llm_enabled() or compare_obligation_to_reference is None:
+        return None
+    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE}:
+        return None
+
+    result = compare_obligation_to_reference(
+        obligation=obligation,
+        existing_reference=old_requirement,
+        domain=domain,
+    )
+    if not isinstance(result, dict):
+        return None
+
+    if _llm_bool(result.get("gap_found")) is not True:
+        return None
+
+    confidence = _llm_confidence(result.get("confidence"))
+    if confidence < 0.55:
+        return None
+
+    gap_summary = _normalize_space(result.get("gap_summary"))
+    if not _is_concrete_llm_gap(gap_summary, obligation):
+        return None
+
+    change_type = _normalize_space(result.get("change_type")).lower()
+    return {
+        "gap_summary": gap_summary,
+        "change_type": change_type if change_type in LLM_CHANGE_TYPES else "",
+        "confidence": confidence,
+    }
+
+
 def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_documents=None):
     """
     Compare new circular requirements against relevant old policy memory.
@@ -1346,6 +1436,12 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
     scout = scout_result or parse_circular_text(content)
     obligations = scout.get("obligations") or []
     engine_notes = ["Semantic Delta Agent used deterministic offline comparison."]
+    llm_mode = get_llm_mode()
+    llm_delta_used = 0
+    if llm_mode == "rules":
+        engine_notes.append("Local LLM delta comparison skipped because COMPLIANCE_LLM_MODE=rules.")
+    elif compare_obligation_to_reference is None:
+        engine_notes.append("Local LLM delta adapter unavailable; deterministic Delta retained.")
 
     if not content or not obligations:
         return {
@@ -1369,11 +1465,18 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
         domain = _domain_for_obligation(obligation)
         old_requirement, source_document = _find_relevant_old_requirement(domain, relevant_documents, obligation)
         change_type = _change_type(old_requirement, obligation, domain)
+        llm_delta = _try_local_llm_delta(obligation, old_requirement, domain)
+        if llm_delta and llm_delta.get("change_type"):
+            change_type = llm_delta["change_type"]
         deadline = _primary_deadline(obligation)
         old_deadline = _primary_deadline(old_requirement) if old_requirement != NO_PRIOR_POLICY else None
-        gap_text = _gap_message(change_type, old_requirement, obligation, domain)
+        gap_text = llm_delta["gap_summary"] if llm_delta else _gap_message(change_type, old_requirement, obligation, domain)
         department = _department_for_gap(domain, obligation)
         advisory = _advisory_for_gap(obligation, domain, scout, department)
+        confidence = _confidence(change_type, source_document)
+        if llm_delta:
+            confidence = max(confidence, min(llm_delta["confidence"], 0.93))
+            llm_delta_used += 1
         key = (gap_text.lower(), obligation.lower())
         if key in seen:
             continue
@@ -1392,7 +1495,7 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
                 "affected_department": department,
                 "deadline": deadline,
                 "evidence_required": _evidence_for_gap(domain, obligation, scout),
-                "confidence": _confidence(change_type, source_document),
+                "confidence": confidence,
                 "source": source_document["id"] if source_document else "No matching prior policy found",
                 "change_type": change_type,
                 "business_vertical": advisory["business_vertical"],
@@ -1444,6 +1547,13 @@ def compare_policy(old_policy=None, new_policy=None, scout_result=None, prior_do
 
     severity_order = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
     highest = max(gaps, key=lambda gap: severity_order.get(gap["severity"], 1))["severity"]
+
+    if llm_delta_used:
+        engine_notes.append(
+            f"Local LLM delta refined {llm_delta_used} comparison(s) after deterministic reference ranking with model {get_ollama_model()}."
+        )
+    elif llm_mode != "rules" and compare_obligation_to_reference is not None:
+        engine_notes.append("Local LLM delta unavailable or returned weak comparisons; deterministic Delta output retained.")
 
     return {
         "gap_found": True,
