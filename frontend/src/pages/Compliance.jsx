@@ -114,7 +114,8 @@ function getTextField(item, candidates, fallback) {
 
 function normalizeCircularItem(item, index) {
   const previewText = item.preview_text ?? item.display_text ?? "";
-  const contentText = item.content ?? item.text ?? item.summary ?? "";
+  const contentText =
+    item.content ?? item.full_text ?? item.circular_text ?? item.text ?? item.summary ?? "";
   const summaryText =
     item.summary ?? item.normalized_summary ?? item.content_excerpt ?? previewText;
 
@@ -131,7 +132,7 @@ function normalizeCircularItem(item, index) {
     summary:
       summaryText || "Approved baseline reference available for comparison.",
     text: previewText || contentText,
-    content: item.content ?? "",
+    content: item.content ?? item.full_text ?? item.circular_text ?? "",
     preview_text: previewText,
     display_text: item.display_text ?? previewText,
     source_status: item.source_status ?? item.metadata?.source_status ?? "",
@@ -185,6 +186,17 @@ function normalizeGap(item, index) {
     gap.impacted_department ??
     gap.business_vertical ??
     "Compliance Office";
+  const existingReference = getTextField(
+    gap,
+    [
+      "existing_reference",
+      "old_requirement",
+      "old_policy",
+      "existing_requirement",
+      "current_policy",
+    ],
+    "Existing reference was not specified.",
+  );
 
   return {
     id: gap.id ?? gap.gap_id ?? `GAP-${index + 1}`,
@@ -193,11 +205,8 @@ function normalizeGap(item, index) {
       ["new_requirement", "new_policy", "requirement", "obligation", "description"],
       "New requirement was not specified.",
     ),
-    existing_reference: getTextField(
-      gap,
-      ["old_requirement", "old_policy", "existing_requirement", "current_policy"],
-      "Existing reference was not specified.",
-    ),
+    existing_reference: existingReference,
+    old_requirement: existingReference,
     policy_gap: getTextField(
       gap,
       ["policy_gap", "detected_gap", "gap", "summary", "description"],

@@ -235,6 +235,7 @@ def _store_reference_circular(
         "source_status": source_status,
         "preview_text": preview_text,
         "display_text": preview_text,
+        "cleaned_characters": len(circular_text),
         "message": "Reference circular added to Policy Reference Library",
     }
 
@@ -293,6 +294,18 @@ def _normalize_analyze_response(result: dict) -> dict:
     }
 
 
+def _usable_gap_reference(value: Optional[str]) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    if "existing approved reference was not specified" in lower:
+        return ""
+    if "existing reference was not specified" in lower:
+        return ""
+    return text
+
+
 def _normalize_policy_gap_references(policy_gaps: list) -> list:
     normalized = []
     for gap in policy_gaps:
@@ -300,12 +313,19 @@ def _normalize_policy_gap_references(policy_gaps: list) -> list:
             normalized.append(gap)
             continue
 
-        existing_reference = (
-            gap.get("existing_reference")
-            or gap.get("old_requirement")
-            or gap.get("old_policy")
-            or gap.get("existing_requirement")
-            or gap.get("current_policy")
+        existing_reference = next(
+            (
+                text
+                for text in (
+                    _usable_gap_reference(gap.get("existing_reference")),
+                    _usable_gap_reference(gap.get("old_requirement")),
+                    _usable_gap_reference(gap.get("old_policy")),
+                    _usable_gap_reference(gap.get("existing_requirement")),
+                    _usable_gap_reference(gap.get("current_policy")),
+                )
+                if text
+            ),
+            "",
         )
         if existing_reference:
             gap = {
@@ -363,6 +383,8 @@ def _circular_item_from_local(local_circular: dict) -> dict:
         "detected_gap": "Run analysis to generate policy gaps.",
         "text": display_text or cleaned_content,
         "content": cleaned_content,
+        "circular_text": cleaned_content,
+        "full_text": cleaned_content,
         "preview_text": display_text,
         "display_text": display_text,
         "withdrawn": bool(source_status),
@@ -430,6 +452,8 @@ def _circular_item_from_memory(memory_circular: dict) -> dict:
         "detected_gap": "Run analysis to compare a new circular against this memory.",
         "text": display_text or content,
         "content": content,
+        "circular_text": content,
+        "full_text": content,
         "preview_text": display_text,
         "display_text": display_text,
         "withdrawn": withdrawn,

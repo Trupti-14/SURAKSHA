@@ -47,6 +47,7 @@ CONTROL_VERBS = (
     "control",
     "policy",
     "framework",
+    "governance",
     "risk",
     "incident",
     "access",
@@ -344,8 +345,65 @@ def _is_user_reference_id(circular_id: str | None) -> bool:
     return bool(circular_id and str(circular_id).startswith("USER-REF-"))
 
 
+def _main_status_scan_text(text: str) -> str:
+    if not text:
+        return ""
+
+    normalized_text = (
+        str(text)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+    )
+    lines = []
+    character_count = 0
+
+    for raw_line in normalized_text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+
+        lower = line.lower().strip(" :-")
+        if re.match(r"^(annex|annexure|appendix)\b", lower):
+            break
+        if any(
+            phrase in lower
+            for phrase in (
+                "list of repealed circulars",
+                "master circulars repealed",
+                "historical circular",
+                "circular reference date subject remarks",
+                "reference date subject remarks",
+            )
+        ):
+            break
+        if _looks_like_reference_table_row(line):
+            continue
+
+        lines.append(line)
+        character_count += len(line) + 1
+        if len(lines) >= 140 or character_count >= 12000:
+            break
+
+    return "\n".join(lines)
+
+
 def _has_withdrawn_marker(text: str) -> bool:
-    return bool(re.search(r"\b(withdrawn|repealed|superseded|archived)\b", text or "", flags=re.I))
+    """
+    Treat a reference as withdrawn only when the main circular status says so.
+    Annexes and repealed/superseded circular lists often contain historical
+    status words and must not mark the uploaded master direction as withdrawn.
+    """
+    status_text = _main_status_scan_text(text)
+    if not status_text:
+        return False
+
+    explicit_patterns = (
+        r"\b(?:document\s+status|circular\s+status|status)\s*[:\-]\s*withdrawn\b",
+        r"\b(?:this|the)\s+(?:circular|master\s+direction|master\s+circular|direction|notification|document)\s+(?:is|has\s+been|stands|was)\s+withdrawn\b",
+        r"\b(?:circular|master\s+direction|master\s+circular|direction|notification|document)\b.{0,80}\bstatus\b.{0,24}\bwithdrawn\b",
+    )
+    return any(re.search(pattern, status_text, flags=re.I | re.S) for pattern in explicit_patterns)
 
 
 def source_status_for_text(text: str) -> str:
@@ -459,7 +517,7 @@ def _is_noisy_reference_line(line: str) -> bool:
         return True
     if _looks_like_subject_line(normalized):
         return True
-    if any(phrase in lower for phrase in NOISY_LINE_PHRASES):
+    if any(phrase in lower for phrase in NOISY_LINE_PHRASES) and not _has_control_verb(normalized):
         return True
     if _looks_like_broken_header(normalized):
         return True
@@ -520,7 +578,7 @@ def clean_reference_text(text: str) -> str:
             continue
 
         if skip_noise_section:
-            if _has_control_verb(line) and len(line) >= 60:
+            if _has_control_verb(line):
                 skip_noise_section = False
             else:
                 continue
@@ -529,7 +587,7 @@ def clean_reference_text(text: str) -> str:
             skip_noise_section = True
             continue
 
-        if any(phrase in lower for phrase in NOISY_LINE_PHRASES):
+        if any(phrase in lower for phrase in NOISY_LINE_PHRASES) and not _has_control_verb(line):
             skip_noise_section = True
             continue
 
@@ -911,6 +969,8 @@ def _fallback_record(circular_id: str, content: str, metadata: dict[str, Any] | 
         "title": title,
         "category": category,
         "content": content or "",
+        "circular_text": content or "",
+        "full_text": content or "",
         "content_excerpt": _content_excerpt(display_text or content),
         "preview_text": display_text,
         "display_text": display_text,
@@ -938,7 +998,7 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 def _format_record(record: dict[str, Any], similarity_score: float | None = None, source: str | None = None) -> dict[str, Any]:
     metadata = record.get("metadata") or {}
     circular_id = record.get("circular_id") or record.get("id") or metadata.get("circular_id", "")
-    content = record.get("content") or record.get("document") or ""
+    content = record.get("content") or record.get("full_text") or record.get("circular_text") or record.get("document") or ""
     display_text = record.get("display_text") or record.get("preview_text") or display_reference_text(content)
     withdrawn = bool(record.get("withdrawn")) or bool(metadata.get("withdrawn")) or _has_withdrawn_marker(content)
     source_status = record.get("source_status") or metadata.get("source_status") or source_status_for_text(content)
@@ -953,6 +1013,8 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
         ),
         "category": record.get("category") or metadata.get("category") or "Regulatory Compliance",
         "content": content,
+        "circular_text": content,
+        "full_text": content,
         "content_excerpt": _content_excerpt(display_text or content),
         "preview_text": display_text,
         "display_text": display_text,
@@ -1012,11 +1074,11 @@ def _get_collection():
 
 def add_circular(circular: dict) -> dict:
     circular_id = circular.get("circular_id") or circular.get("id")
-    content = circular.get("content") or circular.get("text") or ""
+    content = circular.get("content") or circular.get("full_text") or circular.get("circular_text") or circular.get("text") or ""
     metadata = {
         key: value
         for key, value in circular.items()
-        if key not in {"content", "text", "embedding"}
+        if key not in {"content", "full_text", "circular_text", "text", "embedding"}
     }
     if metadata.get("source_type") == "User added approved reference" or str(circular_id or "").startswith("USER-REF-"):
         content = clean_reference_text(content)
@@ -1047,6 +1109,8 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
         metadata["withdrawn"] = _has_withdrawn_marker(original_content) or _has_withdrawn_marker(content)
         if metadata["withdrawn"]:
             metadata["source_status"] = "Withdrawn / archived"
+        else:
+            metadata["source_status"] = ""
     record = _fallback_record(circular_id, content or "", metadata)
 
     _upsert_fallback_record(record)
@@ -1117,7 +1181,7 @@ def cleanup_user_references() -> dict:
             metadata.get("category") or record.get("category"),
         )
         withdrawn = _has_withdrawn_marker(original_content) or _has_withdrawn_marker(cleaned_content)
-        source_status = "Withdrawn / archived" if withdrawn else metadata.get("source_status", "")
+        source_status = "Withdrawn / archived" if withdrawn else ""
 
         metadata.update(
             {

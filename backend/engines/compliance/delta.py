@@ -59,28 +59,94 @@ CONTROL_VERBS = (
     "escalate",
     "test",
     "approve",
+    "framework",
+    "governance",
+    "control",
+    "risk",
+    "incident",
+    "access",
+    "logs",
+    "bcp",
+    "dr",
+    "ciso",
+    "soc",
 )
 
 CYBER_REFERENCE_TERMS = (
     "cert-in",
+    "cert-in reporting",
+    "cyber incident",
+    "cyber incident response",
     "incident reporting",
     "escalation",
+    "soc escalation",
     "soc",
-    "logs",
+    "security logs",
     "incident response",
     "containment",
+    "root cause analysis",
     "root cause",
     "closure",
+    "incident closure",
+    "cyber crisis",
 )
 
 DIGITAL_FRAUD_REFERENCE_TERMS = (
     "fraud",
-    "customer notification",
+    "digital fraud",
+    "digital fraud incident",
+    "payment fraud",
     "transaction logs",
     "evidence",
     "audit trail",
     "reporting timeline",
     "monitoring report",
+)
+
+FRAUD_REPORTING_REFERENCE_TERMS = (
+    "digital fraud incident",
+    "central incident register",
+    "incident register",
+    "detection timestamp",
+    "reporting owner",
+    "within 24 hours",
+    "fraud monitoring team",
+    "fraud monitoring",
+    "regulatory reporting",
+    "fraud reporting",
+    "reporting timeline",
+)
+
+CUSTOMER_NOTIFICATION_TERMS = (
+    "customer notification",
+    "affected customer",
+    "notify affected customers",
+    "customer protection",
+    "complaint channel",
+    "grievance",
+)
+
+CYBER_INCIDENT_REFERENCE_TERMS = (
+    "cert-in reporting",
+    "cert-in",
+    "cyber incident response",
+    "cyber incident",
+    "soc escalation",
+    "security logs",
+    "containment",
+    "root cause analysis",
+    "incident closure",
+    "cyber crisis",
+)
+
+GENERIC_AUDIT_EVIDENCE_TERMS = (
+    "generic audit",
+    "audit evidence",
+    "audit trail",
+    "audit trails",
+    "evidence retention",
+    "retain evidence",
+    "preserve evidence",
 )
 
 NOISY_REFERENCE_TERMS = (
@@ -106,13 +172,44 @@ DOMAIN_TERMS = {
     "soc": ("security operations centre", "security operations center", "outsourced soc", "alert rules", "logs", "metadata", "incident response integration"),
     "bcp_drp": ("business continuity", "disaster recovery", "bcp", "drp", "resilience testing", "recovery objectives"),
     "it_audit": ("audit reports", "audit rights", "sla monitoring", "risk reviews", "closure of observations", "evidence retention"),
-    "fraud": ("fraud", "digital fraud", "payment fraud", "mule", "suspicious"),
+    "fraud": (
+        "fraud",
+        "digital fraud",
+        "payment fraud",
+        "digital fraud incident",
+        "central incident register",
+        "incident register",
+        "detection timestamp",
+        "reporting owner",
+        "fraud monitoring team",
+        "regulatory reporting",
+        "mule",
+        "suspicious",
+    ),
     "customer": ("customer", "notify", "notification", "grievance", "complaint"),
     "evidence": ("evidence", "retain", "preserve", "archive", "audit trail", "audit"),
     "reporting": ("report", "submit", "submission", "rbi", "monthly", "quarterly"),
     "branch": ("branch", "escalate", "escalation", "branch-level"),
     "kyc": ("kyc", "aml", "verification", "dormant", "suspicious transaction"),
-    "cyber": ("cyber", "security", "incident", "log", "digital evidence"),
+    "cyber": (
+        "cyber",
+        "security",
+        "incident",
+        "log",
+        "digital evidence",
+        "cert-in",
+        "malware",
+        "unauthorized access",
+        "data leakage",
+        "credential theft",
+        "payment system compromise",
+        "cyber security impact",
+        "soc escalation",
+        "security logs",
+        "containment",
+        "root cause analysis",
+        "incident closure",
+    ),
     "privacy": ("dpdp", "privacy", "personal data", "data protection"),
     "authentication": ("authentication", "otp", "mfa", "2fa", "biometric"),
 }
@@ -295,8 +392,81 @@ def _domains_for_text(text):
     return domains
 
 
+def _contains_any(text, terms):
+    lower = (text or "").lower()
+    return any(term in lower for term in terms)
+
+
+def _is_fraud_reporting_timeline_obligation(text):
+    lower = (text or "").lower()
+    fraud_context = any(term in lower for term in ("digital fraud", "payment fraud", "cyber-enabled fraud", "fraud"))
+    reporting_context = bool(re.search(r"\breport(?:ing|s|ed)?\b", lower))
+    detection_context = any(
+        term in lower
+        for term in (
+            "within 4 hours",
+            "within four hours",
+            "detection",
+            "branch",
+            "fraud monitoring",
+            "contact centre",
+            "contact center",
+            "digital operations",
+            "confirmed or suspected",
+        )
+    )
+    return fraud_context and reporting_context and detection_context
+
+
+def _is_cyber_incident_obligation(text):
+    return _contains_any(
+        text,
+        (
+            "cert-in",
+            "malware",
+            "unauthorized access",
+            "unauthorised access",
+            "data leakage",
+            "credential theft",
+            "payment system compromise",
+            "cyber security impact",
+            "cybersecurity impact",
+        ),
+    )
+
+
+def _has_fraud_reporting_reference(text):
+    lower = (text or "").lower()
+    strong_terms = tuple(term for term in FRAUD_REPORTING_REFERENCE_TERMS if term != "within 24 hours")
+    if any(term in lower for term in strong_terms):
+        return True
+    return (
+        "within 24 hours" in lower
+        and any(term in lower for term in ("fraud", "incident", "regulatory reporting", "reporting owner"))
+        and not ("customer notification" in lower and "affected customer" in lower)
+    )
+
+
+def _has_cyber_incident_reference(text):
+    return _contains_any(text, CYBER_INCIDENT_REFERENCE_TERMS)
+
+
+def _is_customer_notification_only(text):
+    lower = (text or "").lower()
+    return _contains_any(lower, CUSTOMER_NOTIFICATION_TERMS) and not _has_fraud_reporting_reference(lower)
+
+
+def _is_generic_audit_evidence_only(text):
+    lower = (text or "").lower()
+    return _contains_any(lower, GENERIC_AUDIT_EVIDENCE_TERMS) and not _has_cyber_incident_reference(lower)
+
+
 def _domain_for_obligation(obligation):
     lower = (obligation or "").lower()
+    if _is_fraud_reporting_timeline_obligation(obligation):
+        return "fraud"
+    if _is_cyber_incident_obligation(obligation):
+        return "cyber"
     if any(term in lower for term in ("central inventory", "inventory of all outsourced", "outsourced it services", "inventory shall include")):
         return "it_inventory"
     if any(term in lower for term in ("board-approved it outsourcing policy", "outsourcing policy", "board", "senior management", "it function")):
@@ -319,7 +489,7 @@ def _domain_for_obligation(obligation):
         return "customer"
     if any(term in lower for term in ("kyc", "aml", "verification", "suspicious transaction")):
         return "kyc"
-    if any(term in lower for term in ("cert-in", "cyber", "security log", "digital evidence", "incident")):
+    if any(term in lower for term in ("cert-in", "cyber", "security log", "digital evidence", "incident", "malware", "unauthorized access", "unauthorised access", "data leakage", "credential theft", "payment system compromise")):
         return "cyber"
     if any(term in lower for term in ("branch", "branch-level", "escalation", "escalate")):
         return "branch"
@@ -415,7 +585,14 @@ def _confidence(change_type, relevant_doc):
 
 def _document_content(document):
     if isinstance(document, dict):
-        text = document.get("content") or document.get("text") or document.get("summary") or ""
+        text = (
+            document.get("content")
+            or document.get("full_text")
+            or document.get("circular_text")
+            or document.get("text")
+            or document.get("summary")
+            or ""
+        )
         return clean_reference_text(_strip_metadata_lines(text))
     return clean_reference_text(_strip_metadata_lines(str(document or "")))
 
@@ -452,7 +629,7 @@ def _prepare_prior_documents(old_policy=None, prior_documents=None):
     return documents
 
 
-def _score_document(document_text, scout_result, obligation_domains):
+def _score_document(document_text, scout_result, obligation_domains, obligations=None):
     text = document_text.lower()
     score = 0
 
@@ -469,6 +646,18 @@ def _score_document(document_text, scout_result, obligation_domains):
             if term in text:
                 score += 1
 
+    for obligation in obligations or []:
+        if _is_fraud_reporting_timeline_obligation(obligation):
+            if _has_fraud_reporting_reference(text):
+                score += 18
+            if _is_customer_notification_only(text):
+                score -= 8
+        if _is_cyber_incident_obligation(obligation):
+            if _has_cyber_incident_reference(text):
+                score += 18
+            if _is_generic_audit_evidence_only(text):
+                score -= 8
+
     return score
 
 
@@ -476,7 +665,7 @@ def _select_relevant_documents(documents, scout_result, obligations):
     obligation_domains = _dedupe([_domain_for_obligation(obligation) for obligation in obligations])
     scored = []
     for document in documents:
-        score = _score_document(document["content"], scout_result, obligation_domains)
+        score = _score_document(document["content"], scout_result, obligation_domains, obligations)
         if score > 0:
             scored.append((score, document))
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -508,14 +697,24 @@ def _context_terms_for_requirement(domain, obligation):
 
     if domain == "cyber" or any(term in lower for term in ("cert-in", "cyber", "incident", "soc", "security log")):
         terms.extend(CYBER_REFERENCE_TERMS)
+        if _is_cyber_incident_obligation(obligation):
+            terms.extend(CYBER_INCIDENT_REFERENCE_TERMS)
 
-    if _is_digital_fraud_context(obligation):
+    if _is_fraud_reporting_timeline_obligation(obligation):
+        terms.extend(FRAUD_REPORTING_REFERENCE_TERMS)
+    elif _is_digital_fraud_context(obligation):
         terms.extend(DIGITAL_FRAUD_REFERENCE_TERMS)
 
     return _dedupe(terms)
 
 
-def _reference_passage_score(passage, domain, obligation):
+def _reference_passage_score(
+    passage,
+    domain,
+    obligation,
+    has_fraud_reporting_reference=False,
+    has_cyber_incident_reference=False,
+):
     if _is_noisy_reference_passage(passage):
         return -100
 
@@ -539,6 +738,22 @@ def _reference_passage_score(passage, domain, obligation):
     if _mostly_abbreviations(passage) or _looks_like_reference_table(passage):
         score -= 40
 
+    if _is_fraud_reporting_timeline_obligation(obligation):
+        preferred_matches = sum(1 for term in FRAUD_REPORTING_REFERENCE_TERMS if term in lower)
+        if preferred_matches:
+            score += 22 + min(28, preferred_matches * 7)
+        if "within 24 hours" in lower and _has_fraud_reporting_reference(lower):
+            score += 10
+        if _is_customer_notification_only(lower):
+            score -= 48 if has_fraud_reporting_reference else 18
+
+    if _is_cyber_incident_obligation(obligation):
+        preferred_matches = sum(1 for term in CYBER_INCIDENT_REFERENCE_TERMS if term in lower)
+        if preferred_matches:
+            score += 22 + min(28, preferred_matches * 7)
+        if _is_generic_audit_evidence_only(lower):
+            score -= 48 if has_cyber_incident_reference else 12
+
     return score
 
 
@@ -546,14 +761,33 @@ def _find_relevant_old_requirement(domain, documents, obligation):
     best_passage = ""
     best_document = None
     best_score = 0
+    candidate_passages = []
 
     for document in documents:
         for passage in _reference_passages(document["content"]):
-            score = _reference_passage_score(passage, domain, obligation)
-            if score > best_score:
-                best_passage = passage
-                best_document = document
-                best_score = score
+            candidate_passages.append((document, passage))
+
+    has_fraud_reporting_reference = (
+        _is_fraud_reporting_timeline_obligation(obligation)
+        and any(_has_fraud_reporting_reference(passage) for _, passage in candidate_passages)
+    )
+    has_cyber_incident_reference = (
+        _is_cyber_incident_obligation(obligation)
+        and any(_has_cyber_incident_reference(passage) for _, passage in candidate_passages)
+    )
+
+    for document, passage in candidate_passages:
+        score = _reference_passage_score(
+            passage,
+            domain,
+            obligation,
+            has_fraud_reporting_reference=has_fraud_reporting_reference,
+            has_cyber_incident_reference=has_cyber_incident_reference,
+        )
+        if score > best_score:
+            best_passage = passage
+            best_document = document
+            best_score = score
 
     if best_score == 0:
         return NO_PRIOR_POLICY, None
