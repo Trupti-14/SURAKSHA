@@ -28,7 +28,48 @@ IT_OUTSOURCING_EVIDENCE = (
     "Management approval",
 )
 
+PSO_EVIDENCE = (
+    "RBI prior approval application",
+    "DPSS acknowledgement",
+    "Board approval",
+    "Proposed director details",
+    "Shareholder details",
+    "Public notice proof",
+    "Stakeholder communication proof",
+    "Form A submission",
+    "Certificate of Authorisation",
+    "CoA surrender proof",
+    "Legal review note",
+    "Compliance sign-off",
+    "Closure record",
+)
+
+PSO_CONTEXT_TERMS = (
+    "non-bank pso",
+    "payment system operator",
+    "pso",
+    "prior approval",
+    "dpss",
+    "takeover",
+    "acquisition of control",
+    "sale/transfer of payment activity",
+    "payment activity transfer",
+    "form a",
+    "certificate of authorisation",
+    "certificate of authorization",
+    "payment and settlement systems act",
+    "payment aggregator",
+    "payment gateway",
+    "ppi",
+)
+
 DEPARTMENT_RULES = (
+    ("Payments Vertical / Payment Systems Compliance", ("non-bank pso", "payment system operator", "payment activity", "payment aggregator", "payment gateway", "ppi", "dpss", "form a")),
+    ("Regulatory Compliance Department", ("prior approval of rbi", "rbi approval", "inform rbi", "dpss", "payment and settlement systems act")),
+    ("Legal & Secretarial", ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "legal", "public notice")),
+    ("Board Governance / Company Secretary", ("change in management", "directors", "director", "board approval", "shareholder")),
+    ("Risk & Compliance", ("regulatory/supervisory action", "supervisory action", "risk", "compliance sign-off")),
+    ("Operations / Merchant Acquiring", ("merchants", "agents", "bankers", "customers", "stakeholders", "merchant acquiring")),
     ("IT Vertical", ("central inventory", "inventory shall include", "outsourced it services", "it outsourcing", "application maintenance", "data centre", "network services", "technology owner", "cloud governance")),
     ("Procurement & Vendor Management", ("service provider", "vendor", "third-party", "due diligence", "subcontractor", "cloud provider", "concentration risk")),
     ("Legal Department", ("outsourcing agreement", "legally binding", "contract", "audit rights", "rbi inspection", "termination rights", "exit strategy")),
@@ -49,6 +90,11 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, and Compliance sign-off", ("prior approval of rbi", "rbi approval", "takeover", "acquisition of control")),
+    ("Sale/transfer approval checklist, Board approval, Legal review note, Compliance sign-off, and Closure record", ("sale/transfer of payment activity", "payment activity transfer", "transferor", "transferee")),
+    ("DPSS application pack, proposed director details, shareholder details, and Closure record", ("dpss", "director", "shareholder")),
+    ("Public notice proof and stakeholder communication proof", ("public notice", "stakeholders", "agents", "bankers", "customers", "merchants")),
+    ("Form A submission, Certificate of Authorisation, CoA surrender proof, and DPSS acknowledgement", ("form a", "certificate of authorisation", "certificate of authorization", "surrender")),
     ("Outsourcing policy and management approval", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
     ("BCP/DR test report and management approval", ("business continuity", "disaster recovery", "bcp", "drp", "resilience")),
     ("Outsourcing policy, audit report, and management approval", ("central inventory", "inventory shall include", "inventory of outsourced it", "outsourced it services")),
@@ -100,6 +146,11 @@ def _is_digital_fraud_context(text, scout_result=None):
     )
 
 
+def _is_pso_payment_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(term in context for term in PSO_CONTEXT_TERMS)
+
+
 def _is_it_outsourcing_context(text, scout_result=None):
     context = f"{text or ''} {_scout_context(scout_result)}".lower()
     return any(
@@ -143,6 +194,12 @@ def _dedupe_action_points(action_points):
 
 def _prioritize_action_points(action_points):
     required_verticals = (
+        "Payments Vertical",
+        "Payments Vertical / Payment Systems Compliance",
+        "Regulatory Compliance Department",
+        "Legal & Secretarial",
+        "Board Governance / Company Secretary",
+        "Operations / Merchant Acquiring",
         "IT Vertical",
         "Procurement & Vendor Management",
         "Legal Department",
@@ -214,6 +271,22 @@ def _deadline_days(deadline):
 
 def _department_for_text(text, fallback=None):
     lower = (text or "").lower()
+    if _is_pso_payment_context(lower):
+        matched = ["Payments Vertical / Payment Systems Compliance"]
+        if any(term in lower for term in ("prior approval", "rbi", "dpss", "form a", "certificate of authorisation", "certificate of authorization")):
+            matched.append("Regulatory Compliance Department")
+        if any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "public notice")):
+            matched.append("Legal & Secretarial")
+        if any(term in lower for term in ("management", "director", "shareholder", "board")):
+            matched.append("Board Governance / Company Secretary")
+        if any(term in lower for term in ("stakeholders", "agents", "bankers", "customers", "merchants")):
+            matched.append("Operations / Merchant Acquiring")
+        if any(term in lower for term in ("regulatory/supervisory action", "supervisory action", "risk")):
+            matched.append("Risk & Compliance")
+        if any(term in lower for term in ("audit", "evidence review")):
+            matched.append("Internal Audit")
+        return " + ".join(dict.fromkeys(matched).keys())
+
     matched = []
     for department, terms in DEPARTMENT_RULES:
         if any(term in lower for term in terms):
@@ -324,6 +397,52 @@ def _fixed_it_advisory_for_text(text):
     }
 
 
+def _fixed_payment_advisory_for_text(text):
+    lower = (text or "").lower()
+    if not _is_pso_payment_context(lower):
+        return None
+
+    if any(term in lower for term in ("management", "director", "shareholder", "board")):
+        row = {
+            "business_vertical": "Board Governance / Company Secretary",
+            "sub_vertical": "Corporate Governance",
+            "scope": "Management/director/shareholder change intimation",
+        }
+    elif any(term in lower for term in ("public notice", "stakeholders", "agents", "bankers", "customers", "merchants")):
+        row = {
+            "business_vertical": "Operations / Merchant Acquiring",
+            "sub_vertical": "Stakeholder Communications",
+            "scope": "Public notice and stakeholder intimation",
+        }
+    elif any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee")):
+        row = {
+            "business_vertical": "Legal & Secretarial",
+            "sub_vertical": "Regulatory Transactions",
+            "scope": "PSO control or payment activity transfer approval",
+        }
+    elif any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "dpss", "rbi")):
+        row = {
+            "business_vertical": "Regulatory Compliance Department",
+            "sub_vertical": "Payment Systems Compliance",
+            "scope": "DPSS application and authorisation documentation",
+        }
+    else:
+        row = {
+            "business_vertical": "Payments Vertical",
+            "sub_vertical": "Payment Systems Compliance",
+            "scope": "Digital payment regulatory approval workflow",
+        }
+
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Payment System Operator prior approval and payment activity transfer requirements",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": "Deterministic digital_payment / PSO domain mapping.",
+    }
+
+
 def _advisory_from_gap_or_match(gap, text, scout_result, department):
     if gap and gap.get("business_vertical") and gap.get("sub_vertical"):
         return {
@@ -336,7 +455,7 @@ def _advisory_from_gap_or_match(gap, text, scout_result, department):
             "assignment_basis": gap.get("assignment_basis", "Mapped from Delta policy gap advisory assignment."),
         }
 
-    fixed_advisory = _fixed_it_advisory_for_text(text)
+    fixed_advisory = _fixed_payment_advisory_for_text(text) or _fixed_it_advisory_for_text(text)
     if fixed_advisory:
         return fixed_advisory
 
@@ -405,7 +524,27 @@ def _it_outsourcing_evidence_for_text(text):
     return _join_evidence(evidence or IT_OUTSOURCING_EVIDENCE)
 
 
+def _pso_evidence_for_text(text):
+    lower = (text or "").lower()
+    evidence = []
+    if any(term in lower for term in ("prior approval", "rbi approval", "takeover", "acquisition of control")):
+        evidence.extend(("RBI prior approval application", "DPSS acknowledgement", "Board approval", "Legal review note", "Compliance sign-off"))
+    if any(term in lower for term in ("sale/transfer", "payment activity transfer", "transferor", "transferee")):
+        evidence.extend(("Board approval", "Legal review note", "Compliance sign-off", "Closure record"))
+    if any(term in lower for term in ("management", "director", "shareholder")):
+        evidence.extend(("Proposed director details", "Shareholder details", "DPSS acknowledgement"))
+    if any(term in lower for term in ("public notice", "stakeholder", "agents", "bankers", "customers", "merchants")):
+        evidence.extend(("Public notice proof", "Stakeholder communication proof", "Closure record"))
+    if any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "surrender")):
+        evidence.extend(("Form A submission", "Certificate of Authorisation", "CoA surrender proof", "DPSS acknowledgement"))
+    if any(term in lower for term in ("regulatory/supervisory action", "supervisory action")):
+        evidence.extend(("Legal review note", "Compliance sign-off", "Closure record"))
+    return _join_evidence(evidence or PSO_EVIDENCE)
+
+
 def _strict_evidence_for_context(text, scout_result=None):
+    if _is_pso_payment_context(text, scout_result):
+        return _pso_evidence_for_text(text)
     if _is_digital_fraud_context(text, scout_result):
         return _digital_fraud_evidence_for_text(text)
     if _is_it_outsourcing_context(text, scout_result):
@@ -441,7 +580,15 @@ def _priority(deadline_days, text, severity=None):
     elif deadline_days <= 30:
         score = 6
 
-    if any(term in lower for term in ("fraud", "cyber", "mule", "customer", "kyc", "aml", "outsourcing", "cloud", "service provider", "soc")):
+    if _is_pso_payment_context(lower):
+        if any(term in lower for term in ("prior approval", "rbi approval", "dpss", "takeover", "acquisition of control", "form a", "certificate of authorisation", "certificate of authorization")):
+            score = max(score, 7)
+        elif any(term in lower for term in ("public notice", "stakeholder", "agents", "bankers", "customers", "merchants")):
+            score = max(score, 6)
+        else:
+            score = max(score, 5)
+        score = min(score, 8)
+    elif any(term in lower for term in ("fraud", "cyber", "mule", "customer", "kyc", "aml", "outsourcing", "cloud", "service provider", "soc")):
         score = min(10, score + 1)
     if severity == "Critical":
         score = max(score, 9)
@@ -461,6 +608,25 @@ def _priority(deadline_days, text, severity=None):
 
 def _action_template(text, change_type=None, scout_result=None):
     lower = (text or "").lower()
+    if _is_pso_payment_context(text, scout_result):
+        if "within 15 calendar days" in lower and "inform rbi" in lower:
+            return "Track 15-calendar-day RBI intimation for management/director or authorised payment activity transfer changes."
+        if any(term in lower for term in ("takeover", "acquisition of control")):
+            return "Create RBI prior approval workflow for takeover/acquisition of control."
+        if "sale/transfer" in lower or "payment activity transfer" in lower:
+            return "Create sale/transfer approval checklist for payment activity transfer."
+        if any(term in lower for term in ("management", "director", "shareholder", "dpss")):
+            return "Maintain DPSS application pack with proposed director and shareholder details."
+        if "public notice" in lower:
+            return "Publish 15-calendar-day public notice after RBI approval."
+        if any(term in lower for term in ("stakeholders", "agents", "bankers", "customers", "merchants")):
+            return "Notify stakeholders before payment activity transfer."
+        if any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "surrender")):
+            return "Maintain Form A, Certificate of Authorisation, and surrender documentation where applicable."
+        if "regulatory/supervisory action" in lower or "supervisory action" in lower:
+            return "Maintain board approval, legal review, compliance sign-off, and closure evidence for supervisory liability."
+        return "Create RBI approval and DPSS compliance workflow for PSO control or payment activity changes."
+
     if _is_digital_fraud_context(text, scout_result):
         if any(term in lower for term in ("cert-in", "cyber", "security incident")):
             return "Configure CERT-In escalation path with audit trail export and closure timestamp."

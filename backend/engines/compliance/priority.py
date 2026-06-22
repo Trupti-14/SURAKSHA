@@ -22,7 +22,9 @@ def _priority_reason(action_text: str, deadline_days: int, score: int) -> str:
     elif deadline_days <= 30:
         reasons.append("implementation deadline is within 30 days")
 
-    if any(k in lower_action for k in ["security", "fraud", "kyc", "aml", "authentication"]):
+    if any(k in lower_action for k in ["prior approval", "dpss", "payment activity transfer", "form a", "certificate of authorisation", "certificate of authorization"]):
+        reasons.append("RBI payment-system approval or authorisation control is required")
+    elif any(k in lower_action for k in ["security", "fraud", "kyc", "aml", "authentication"]):
         reasons.append("banking risk keywords are present")
     elif any(k in lower_action for k in ["audit", "report", "log"]):
         reasons.append("audit or reporting evidence is required")
@@ -54,7 +56,20 @@ def calculate_priority(action_points: list) -> list:
             score = 2
 
         action_text = ap.get("action", "").lower()
-        if any(k in action_text for k in ["security", "fraud", "kyc", "aml", "authentication"]):
+        pso_approval = any(
+            k in action_text
+            for k in [
+                "prior approval",
+                "dpss",
+                "payment activity transfer",
+                "form a",
+                "certificate of authorisation",
+                "certificate of authorization",
+            ]
+        )
+        if pso_approval:
+            score = min(8, max(score, 7))
+        elif any(k in action_text for k in ["security", "fraud", "kyc", "aml", "authentication"]):
             score = min(10, score + 2)
         elif any(k in action_text for k in ["audit", "report", "log"]):
             score = min(10, score + 1)

@@ -69,6 +69,24 @@ export async function analyzeComplianceCircular({
   );
 }
 
+export async function analyzeComplianceCircularUpload({ file, fileName }) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  if (fileName) {
+    formData.append("file_name", fileName);
+  }
+
+  return requestComplianceJson(
+    "/api/compliance/analyze/upload",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Compliance circular upload analysis could not be completed. Please confirm the backend is running and try again.",
+  );
+}
+
 export async function verifyComplianceEvidence({
   file,
   requiredEvidence,

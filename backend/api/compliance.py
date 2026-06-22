@@ -23,7 +23,7 @@ from engines.compliance.chroma_store import (
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
-ROUTES = ["analyze", "evidence/verify", "circulars", "actions", "references"]
+ROUTES = ["analyze", "analyze/upload", "evidence/verify", "circulars", "actions", "references"]
 
 REFERENCE_DOMAINS = {
     "digital_fraud",
@@ -37,6 +37,25 @@ REFERENCE_DOMAINS = {
     "audit_governance",
     "general_compliance",
 }
+
+PSO_REFERENCE_TERMS = (
+    "pso",
+    "payment system operator",
+    "non-bank pso",
+    "prior approval",
+    "dpss",
+    "takeover",
+    "acquisition of control",
+    "sale/transfer of payment activity",
+    "payment activity transfer",
+    "form a",
+    "certificate of authorisation",
+    "certificate of authorization",
+    "payment and settlement systems act",
+    "payment aggregator",
+    "payment gateway",
+    "ppi",
+)
 
 SAMPLE_CIRCULARS = [
     {
@@ -247,6 +266,18 @@ def _decode_txt_upload(file_bytes: bytes) -> str:
         raise HTTPException(status_code=400, detail="TXT file must be UTF-8 encoded.") from exc
 
 
+def _normalize_uploaded_circular_text(text: str) -> str:
+    normalized = (
+        str(text or "")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+    )
+    normalized = "\n".join(re.sub(r"[ \t\f\v]+", " ", line).strip() for line in normalized.splitlines())
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
 def _extract_pdf_text(file_bytes: bytes) -> str:
     try:
         from pypdf import PdfReader
@@ -277,12 +308,17 @@ def _extract_pdf_text(file_bytes: bytes) -> str:
 def _normalize_analyze_response(result: dict) -> dict:
     result = result or {}
     priority = result.get("priority") or {}
+    policy_gaps = _normalize_policy_gap_references(result.get("policy_gaps") or [])
     return {
         "offline_mode": bool(result.get("offline_mode", True)),
         "summary": result.get("summary") or "Compliance analysis completed in offline mode.",
         "obligations": result.get("obligations") or [],
-        "similar_circulars": result.get("similar_circulars") or [],
-        "policy_gaps": _normalize_policy_gap_references(result.get("policy_gaps") or []),
+        "similar_circulars": _filter_similar_references_for_context(
+            result.get("similar_circulars") or [],
+            result.get("obligations") or [],
+            policy_gaps,
+        ),
+        "policy_gaps": policy_gaps,
         "measurable_action_points": result.get("measurable_action_points") or [],
         "priority": {
             "priority_score": priority.get("priority_score", 0),
@@ -292,6 +328,33 @@ def _normalize_analyze_response(result: dict) -> dict:
         "workflow": result.get("workflow") or [],
         "engine_notes": result.get("engine_notes") or [],
     }
+
+
+def _contains_pso_terms(value: str) -> bool:
+    lower = (value or "").lower()
+    return any(term in lower for term in PSO_REFERENCE_TERMS)
+
+
+def _filter_similar_references_for_context(similar_circulars: list, obligations: list, policy_gaps: list) -> list:
+    context_parts = [str(item) for item in obligations]
+    for gap in policy_gaps:
+        if isinstance(gap, dict):
+            context_parts.extend(
+                str(gap.get(key) or "")
+                for key in ("new_requirement", "existing_reference", "old_requirement", "policy_gap", "gap")
+            )
+    if not _contains_pso_terms(" ".join(context_parts)):
+        return similar_circulars
+
+    filtered = []
+    for item in similar_circulars:
+        if isinstance(item, dict):
+            text = " ".join(str(item.get(key) or "") for key in ("title", "summary", "content", "text", "category", "id"))
+        else:
+            text = str(item)
+        if _contains_pso_terms(text):
+            filtered.append(item)
+    return filtered
 
 
 def _usable_gap_reference(value: Optional[str]) -> str:
@@ -473,6 +536,46 @@ def analyze_circular(request: CircularRequest):
         file_name=request.file_name,
         mode=request.mode or "offline",
         circular_id=request.circular_id,
+    )
+    return _normalize_analyze_response(result)
+
+
+@router.post("/analyze/upload")
+async def analyze_circular_upload(
+    file: Optional[UploadFile] = File(default=None),
+    file_name: Optional[str] = Form(default=None),
+):
+    if file is None:
+        raise HTTPException(status_code=400, detail="file is required")
+
+    uploaded_file_name = (file.filename or "").strip()
+    extension = uploaded_file_name.rsplit(".", 1)[-1].lower() if "." in uploaded_file_name else ""
+    if extension not in {"txt", "pdf"}:
+        raise HTTPException(status_code=400, detail="Only TXT or PDF upload is supported here.")
+
+    try:
+        file_bytes = await file.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Uploaded file could not be read: {exc}") from exc
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if extension == "txt":
+        circular_text = _normalize_uploaded_circular_text(_decode_txt_upload(file_bytes))
+        if len(circular_text) < 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Extracted circular text must be at least 100 characters.",
+            )
+    else:
+        circular_text = _normalize_uploaded_circular_text(_extract_pdf_text(file_bytes))
+
+    result = run_compliance_workflow(
+        circular_text=circular_text,
+        file_name=(file_name or uploaded_file_name or "uploaded-rbi-circular").strip(),
+        mode="offline",
+        circular_id=None,
     )
     return _normalize_analyze_response(result)
 

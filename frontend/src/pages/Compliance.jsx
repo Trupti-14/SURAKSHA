@@ -6,6 +6,7 @@ import Layout from "../components/ui/Layout.jsx";
 import {
   addComplianceReference,
   analyzeComplianceCircular,
+  analyzeComplianceCircularUpload,
   deleteComplianceReference,
   fetchComplianceCirculars,
   uploadComplianceReference,
@@ -169,7 +170,7 @@ function normalizeActionPoint(item, index, priority) {
       action.evidence ??
       action.proof_required ??
       "Evidence requirement to be confirmed by the owner",
-    status: action.status ?? "Pending Evidence",
+    status: action.status ?? "Pending Review",
     reason:
       action.reason ??
       action.priority_reason ??
@@ -304,6 +305,8 @@ export default function Compliance() {
   });
   const [referenceUploadFile, setReferenceUploadFile] = useState(null);
   const [referenceFileInputKey, setReferenceFileInputKey] = useState(0);
+  const [circularUploadFile, setCircularUploadFile] = useState(null);
+  const [circularFileInputKey, setCircularFileInputKey] = useState(0);
   const [circularText, setCircularText] = useState("");
   const [fileName, setFileName] = useState("new-rbi-circular.txt");
   const [analysis, setAnalysis] = useState(null);
@@ -427,7 +430,41 @@ export default function Compliance() {
   function handleLoadDemoCircular() {
     setCircularText(demoCircularText);
     setFileName("rbi-new-2026-004-demo.txt");
+    setCircularUploadFile(null);
+    setCircularFileInputKey((key) => key + 1);
     clearAnalysis();
+  }
+
+  function handleCircularUploadFileChange(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      setCircularUploadFile(null);
+      return;
+    }
+
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith(".txt") && !lowerName.endsWith(".pdf")) {
+      setCircularUploadFile(null);
+      event.target.value = "";
+      setAnalysisState({
+        status: "error",
+        error: "Only TXT or PDF upload is supported here.",
+      });
+      return;
+    }
+
+    setCircularUploadFile(file);
+    setFileName(file.name);
+    clearAnalysis();
+  }
+
+  function handleClearCircularUpload() {
+    setCircularUploadFile(null);
+    setCircularFileInputKey((key) => key + 1);
+    if (analysis || analysisState.status !== "idle") {
+      clearAnalysis();
+    }
   }
 
   function handleReferenceFieldChange(field, value) {
@@ -594,10 +631,10 @@ export default function Compliance() {
   }
 
   async function handleAnalyzeCircular() {
-    if (!circularText.trim()) {
+    if (!circularUploadFile && !circularText.trim()) {
       setAnalysisState({
         status: "error",
-        error: "Paste a new RBI circular before running analysis.",
+        error: "Paste a new RBI circular or choose a TXT/PDF file before running analysis.",
       });
       return;
     }
@@ -606,16 +643,22 @@ export default function Compliance() {
     setSelectedActionId("");
     setAnalysisState({ status: "loading", error: "" });
 
-    const result = await analyzeComplianceCircular({
-      circularText,
-      fileName: fileName || "new-rbi-circular.txt",
-      mode: "offline",
-    });
+    const result = circularUploadFile
+      ? await analyzeComplianceCircularUpload({
+          file: circularUploadFile,
+          fileName: fileName || circularUploadFile.name,
+        })
+      : await analyzeComplianceCircular({
+          circularText,
+          fileName: fileName || "new-rbi-circular.txt",
+          mode: "offline",
+        });
 
     if (result?.ok === false) {
       setAnalysisState({
         status: "error",
         error:
+          result.error ||
           "Analysis could not be completed. Please confirm the backend is running and try again.",
       });
       return;
@@ -701,6 +744,37 @@ export default function Compliance() {
               />
             </div>
 
+            <div className="mt-3 grid gap-3 rounded-lg border border-slate-800/80 bg-[#0a1627] p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Optional TXT/PDF upload
+                </label>
+                <input
+                  key={circularFileInputKey}
+                  type="file"
+                  accept=".txt,.pdf,text/plain,application/pdf"
+                  onChange={handleCircularUploadFileChange}
+                  className="mt-2 w-full rounded-lg border border-slate-800/80 bg-[#0f1b2d] px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700"
+                />
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {circularUploadFile
+                    ? `Selected ${circularUploadFile.name}`
+                    : "Manual paste remains available when no file is selected."}
+                </p>
+              </div>
+
+              {circularUploadFile && (
+                <button
+                  type="button"
+                  onClick={handleClearCircularUpload}
+                  disabled={isAnalyzing}
+                  className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200 disabled:cursor-not-allowed disabled:text-slate-500"
+                >
+                  Clear file
+                </button>
+              )}
+            </div>
+
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -720,7 +794,11 @@ export default function Compliance() {
                 disabled={isAnalyzing}
                 className="rounded-lg bg-sky-400 px-5 py-2.5 text-sm font-semibold text-[#06101f] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
-                {isAnalyzing ? "Analyzing circular..." : "Analyze Circular"}
+                {isAnalyzing
+                  ? circularUploadFile
+                    ? "Extracting and analyzing circular..."
+                    : "Analyzing circular..."
+                  : "Analyze Circular"}
               </button>
 
               <button
@@ -955,16 +1033,25 @@ export default function Compliance() {
 
             {actionPoints.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1160px] text-left">
+                <table className="w-full min-w-[1280px] table-fixed text-left">
+                  <colgroup>
+                    <col className="w-[90px]" />
+                    <col className="w-[280px]" />
+                    <col className="w-[230px]" />
+                    <col className="w-[140px]" />
+                    <col className="w-[150px]" />
+                    <col className="w-[280px]" />
+                    <col className="w-[150px]" />
+                  </colgroup>
                   <thead className="border-b border-slate-800/80 bg-[#0a1627] text-[11px] uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-semibold">MAP ID</th>
-                      <th className="px-5 py-3 font-semibold">Action</th>
-                      <th className="px-5 py-3 font-semibold">Owner/Department</th>
-                      <th className="px-5 py-3 font-semibold">Deadline</th>
-                      <th className="px-5 py-3 font-semibold">Priority</th>
-                      <th className="px-5 py-3 font-semibold">Evidence Required</th>
-                      <th className="px-5 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">MAP ID</th>
+                      <th className="px-4 py-3 font-semibold">Action</th>
+                      <th className="px-4 py-3 font-semibold">Owner/Department</th>
+                      <th className="px-4 py-3 font-semibold">Deadline</th>
+                      <th className="px-4 py-3 font-semibold">Priority</th>
+                      <th className="px-4 py-3 font-semibold">Evidence Required</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -978,35 +1065,37 @@ export default function Compliance() {
                             : "hover:bg-slate-800/30"
                         }`}
                       >
-                        <td className="px-5 py-4 text-xs font-semibold text-sky-300">
+                        <td className="px-4 py-4 align-top text-xs font-semibold text-sky-300">
                           {action.id}
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-100">
+                        <td className="break-words px-4 py-4 align-top text-sm leading-6 text-slate-100">
                           {action.action}
                         </td>
-                        <td className="px-5 py-4 text-sm leading-5 text-slate-300">
-                          <span className="block">{action.owner}</span>
-                          <span className="text-xs text-slate-500">
+                        <td className="break-words px-4 py-4 align-top text-sm leading-5 text-slate-300">
+                          <span className="block font-medium text-slate-200">
+                            {action.owner}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
                             {action.department}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-sm tabular-nums text-slate-300">
+                        <td className="px-4 py-4 align-top text-sm tabular-nums text-slate-300">
                           {action.deadline}
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-4 align-top">
                           <span
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
+                            className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${priorityTone(
                               action.priority_label,
                             )}`}
                           >
                             {action.priority_label} {action.priority_score}/10
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-xs leading-5 text-slate-400">
+                        <td className="break-words px-4 py-4 align-top text-xs leading-5 text-slate-400">
                           {action.evidence_required}
                         </td>
-                        <td className="px-5 py-4">
-                          <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300 ring-1 ring-slate-700">
+                        <td className="px-4 py-4 align-top">
+                          <span className="inline-flex whitespace-nowrap rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300 ring-1 ring-slate-700">
                             {action.status}
                           </span>
                         </td>
@@ -1062,7 +1151,7 @@ export default function Compliance() {
               onClick={() => setReferencesOpen((open) => !open)}
               className="rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-sky-400/60 hover:text-sky-200"
             >
-              {referencesOpen ? "Hide References" : "View References"}
+              {referencesOpen ? "Hide References" : "Show References"}
             </button>
           </div>
         </div>

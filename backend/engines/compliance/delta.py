@@ -6,6 +6,7 @@ from .scout import parse_circular_text
 
 
 NO_PRIOR_POLICY = "No matching prior policy found."
+NO_CLOSE_PSO_REFERENCE = "No closely matching approved PSO reference found in the current policy library."
 
 METADATA_KEYS = {
     "circular_id",
@@ -41,6 +42,22 @@ IT_OUTSOURCING_EVIDENCE = (
     "Audit report",
     "Exit strategy",
     "Management approval",
+)
+
+PSO_EVIDENCE = (
+    "RBI prior approval application",
+    "DPSS acknowledgement",
+    "Board approval",
+    "Proposed director details",
+    "Shareholder details",
+    "Public notice proof",
+    "Stakeholder communication proof",
+    "Form A submission",
+    "Certificate of Authorisation",
+    "CoA surrender proof",
+    "Legal review note",
+    "Compliance sign-off",
+    "Closure record",
 )
 
 CONTROL_VERBS = (
@@ -149,6 +166,28 @@ GENERIC_AUDIT_EVIDENCE_TERMS = (
     "preserve evidence",
 )
 
+PSO_REFERENCE_TERMS = (
+    "pso",
+    "payment system operator",
+    "non-bank pso",
+    "prior approval",
+    "dpss",
+    "takeover",
+    "acquisition of control",
+    "payment activity transfer",
+    "sale/transfer of payment activity",
+    "form a",
+    "certificate of authorisation",
+    "certificate of authorization",
+    "public notice",
+    "stakeholder intimation",
+    "stakeholders",
+    "payment and settlement systems act",
+    "payment aggregator",
+    "payment gateway",
+    "ppi",
+)
+
 NOISY_REFERENCE_TERMS = (
     "circular reference date subject remarks",
     "reference date subject remarks",
@@ -164,6 +203,24 @@ NOISY_REFERENCE_TERMS = (
 )
 
 DOMAIN_TERMS = {
+    "digital_payment": (
+        "pso",
+        "payment system operator",
+        "non-bank pso",
+        "prior approval",
+        "dpss",
+        "takeover",
+        "acquisition of control",
+        "sale/transfer of payment activity",
+        "payment activity transfer",
+        "form a",
+        "certificate of authorisation",
+        "certificate of authorization",
+        "payment and settlement systems act",
+        "payment aggregator",
+        "payment gateway",
+        "ppi",
+    ),
     "it_inventory": ("central inventory", "outsourced it services", "service provider name", "technology owner", "criticality rating", "exit dependency"),
     "it_policy": ("board-approved", "it outsourcing policy", "senior management", "it function", "compliance department"),
     "vendor_due_diligence": ("service provider", "due diligence", "third-party", "subcontractor", "concentration risk", "vendor"),
@@ -215,6 +272,7 @@ DOMAIN_TERMS = {
 }
 
 DEPARTMENT_BY_DOMAIN = {
+    "digital_payment": "Payments Vertical / Payment Systems Compliance",
     "it_inventory": "IT Vertical",
     "it_policy": "Compliance Department + Risk Management + IT Vertical",
     "vendor_due_diligence": "Procurement & Vendor Management",
@@ -235,6 +293,7 @@ DEPARTMENT_BY_DOMAIN = {
 }
 
 EVIDENCE_BY_DOMAIN = {
+    "digital_payment": "RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, Compliance sign-off, and Closure record",
     "it_inventory": "Outsourcing policy, audit report, and management approval",
     "it_policy": "Outsourcing policy and management approval",
     "vendor_due_diligence": "Service provider due diligence checklist and management approval",
@@ -255,6 +314,7 @@ EVIDENCE_BY_DOMAIN = {
 }
 
 RISK_KEYWORDS_BY_DOMAIN = {
+    "digital_payment": ["payment system approval", "digital payment"],
     "it_inventory": ["IT outsourcing", "third-party risk"],
     "it_policy": ["IT outsourcing", "third-party risk"],
     "vendor_due_diligence": ["third-party risk", "IT outsourcing"],
@@ -435,6 +495,43 @@ def _is_cyber_incident_obligation(text):
     )
 
 
+def _is_pso_payment_context(text):
+    return _contains_any(text, PSO_REFERENCE_TERMS)
+
+
+def _has_pso_reference(text):
+    lower = (text or "").lower()
+    anchor_terms = (
+        "pso",
+        "payment system operator",
+        "non-bank pso",
+        "dpss",
+        "payment activity transfer",
+        "sale/transfer of payment activity",
+        "form a",
+        "certificate of authorisation",
+        "certificate of authorization",
+        "payment and settlement systems act",
+        "payment aggregator",
+        "payment gateway",
+        "ppi",
+    )
+    action_terms = (
+        "prior approval",
+        "takeover",
+        "acquisition of control",
+        "public notice",
+        "stakeholder",
+        "authorisation",
+        "authorization",
+        "surrender",
+        "rbi",
+    )
+    return any(term in lower for term in anchor_terms) and any(
+        term in lower for term in action_terms
+    )
+
+
 def _has_fraud_reporting_reference(text):
     lower = (text or "").lower()
     strong_terms = tuple(term for term in FRAUD_REPORTING_REFERENCE_TERMS if term != "within 24 hours")
@@ -463,6 +560,8 @@ def _is_generic_audit_evidence_only(text):
 
 def _domain_for_obligation(obligation):
     lower = (obligation or "").lower()
+    if _is_pso_payment_context(obligation):
+        return "digital_payment"
     if _is_fraud_reporting_timeline_obligation(obligation):
         return "fraud"
     if _is_cyber_incident_obligation(obligation):
@@ -559,6 +658,8 @@ def _severity(domain, change_type, new_deadline=None, old_deadline=None):
     new_minutes = _duration_minutes(new_deadline)
     old_minutes = _duration_minutes(old_deadline)
 
+    if domain == "digital_payment":
+        return "High" if change_type in {"missing_policy", "deadline_changed", "new_obligation"} else "Medium"
     if change_type == "deadline_changed" and new_minutes is not None:
         if new_minutes <= 4 * 60:
             return "Critical"
@@ -647,6 +748,13 @@ def _score_document(document_text, scout_result, obligation_domains, obligations
                 score += 1
 
     for obligation in obligations or []:
+        if _is_pso_payment_context(obligation):
+            if _has_pso_reference(text):
+                score += 28
+            else:
+                score -= 18
+            if any(term in text for term in ("digital fraud", "fraud reporting", "customer notification", "cert-in", "cyber incident")):
+                score -= 16
         if _is_fraud_reporting_timeline_obligation(obligation):
             if _has_fraud_reporting_reference(text):
                 score += 18
@@ -700,7 +808,9 @@ def _context_terms_for_requirement(domain, obligation):
         if _is_cyber_incident_obligation(obligation):
             terms.extend(CYBER_INCIDENT_REFERENCE_TERMS)
 
-    if _is_fraud_reporting_timeline_obligation(obligation):
+    if domain == "digital_payment" or _is_pso_payment_context(obligation):
+        terms.extend(PSO_REFERENCE_TERMS)
+    elif _is_fraud_reporting_timeline_obligation(obligation):
         terms.extend(FRAUD_REPORTING_REFERENCE_TERMS)
     elif _is_digital_fraud_context(obligation):
         terms.extend(DIGITAL_FRAUD_REFERENCE_TERMS)
@@ -737,6 +847,15 @@ def _reference_passage_score(
         score -= 16
     if _mostly_abbreviations(passage) or _looks_like_reference_table(passage):
         score -= 40
+
+    if domain == "digital_payment" or _is_pso_payment_context(obligation):
+        preferred_matches = sum(1 for term in PSO_REFERENCE_TERMS if term in lower)
+        if preferred_matches:
+            score += 24 + min(36, preferred_matches * 6)
+        if any(term in lower for term in ("digital fraud", "fraud reporting", "customer notification", "cert-in", "cyber incident")):
+            score -= 48
+        if preferred_matches == 0:
+            score -= 32
 
     if _is_fraud_reporting_timeline_obligation(obligation):
         preferred_matches = sum(1 for term in FRAUD_REPORTING_REFERENCE_TERMS if term in lower)
@@ -788,6 +907,9 @@ def _find_relevant_old_requirement(domain, documents, obligation):
             best_passage = passage
             best_document = document
             best_score = score
+
+    if domain == "digital_payment" and (best_score < 30 or not _has_pso_reference(best_passage)):
+        return NO_CLOSE_PSO_REFERENCE, None
 
     if best_score == 0:
         return NO_PRIOR_POLICY, None
@@ -915,7 +1037,7 @@ def _it_outsourcing_evidence_for_obligation(obligation):
 
 
 def _change_type(old_requirement, new_requirement, domain):
-    if old_requirement == NO_PRIOR_POLICY:
+    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE}:
         return "missing_policy"
 
     old_deadline = _primary_deadline(old_requirement)
@@ -970,6 +1092,14 @@ def _gap_dimensions(new_requirement):
         dimensions.append("agreement clause review")
     if any(term in lower for term in ("due diligence", "service provider", "third-party")):
         dimensions.append("service provider due diligence")
+    if any(term in lower for term in ("prior approval", "rbi approval", "dpss", "takeover", "acquisition of control")):
+        dimensions.append("RBI prior approval workflow")
+    if any(term in lower for term in ("sale/transfer", "payment activity transfer")):
+        dimensions.append("payment activity transfer checklist")
+    if any(term in lower for term in ("public notice", "stakeholder", "agents", "bankers", "merchants")):
+        dimensions.append("public notice and stakeholder intimation")
+    if any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "surrender")):
+        dimensions.append("Form A / CoA documentation")
 
     return _dedupe(dimensions) or ["specific workflow, evidence, owner, and audit trail"]
 
@@ -979,6 +1109,8 @@ def _gap_message(change_type, old_requirement, new_requirement, domain):
     old_deadline = _primary_deadline(old_requirement) if old_requirement != NO_PRIOR_POLICY else None
     new_deadline = _primary_deadline(new_requirement)
 
+    if domain == "digital_payment" and old_requirement == NO_CLOSE_PSO_REFERENCE:
+        return f"New/insufficient PSO policy coverage: approved digital payment policy does not capture {dimensions} required by: {new_requirement}"
     if change_type == "deadline_changed":
         return f"Existing {domain} process uses timeline {old_deadline or 'not captured'} but new circular requires {new_deadline}; timeline update is missing."
     if change_type == "missing_policy":
@@ -996,6 +1128,21 @@ def _gap_message(change_type, old_requirement, new_requirement, domain):
 
 def _department_for_gap(domain, obligation):
     lower = (obligation or "").lower()
+    if domain == "digital_payment":
+        departments = ["Payments Vertical / Payment Systems Compliance"]
+        if any(term in lower for term in ("prior approval", "rbi", "dpss", "form a", "certificate of authorisation", "certificate of authorization")):
+            departments.append("Regulatory Compliance Department")
+        if any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "public notice")):
+            departments.append("Legal & Secretarial")
+        if any(term in lower for term in ("management", "director", "shareholder", "board")):
+            departments.append("Board Governance / Company Secretary")
+        if any(term in lower for term in ("stakeholders", "agents", "bankers", "customers", "merchants")):
+            departments.append("Operations / Merchant Acquiring")
+        if any(term in lower for term in ("regulatory/supervisory action", "risk")):
+            departments.append("Risk & Compliance")
+        if any(term in lower for term in ("audit", "evidence review")):
+            departments.append("Internal Audit")
+        return " + ".join(_dedupe(departments)[:3])
     if domain == "reporting" and any(term in lower for term in ("fraud", "mule", "digital fraud")):
         return "Fraud Risk Department + Compliance Office"
     if domain == "evidence" and any(term in lower for term in ("cyber", "digital evidence", "security log")):
@@ -1007,6 +1154,19 @@ def _department_for_gap(domain, obligation):
 
 def _evidence_for_gap(domain, obligation, scout=None):
     lower = (obligation or "").lower()
+    if domain == "digital_payment":
+        evidence = []
+        if any(term in lower for term in ("prior approval", "rbi approval", "takeover", "acquisition of control")):
+            evidence.extend(("RBI prior approval application", "DPSS acknowledgement", "Board approval", "Legal review note", "Compliance sign-off"))
+        if any(term in lower for term in ("management", "director", "shareholder")):
+            evidence.extend(("Proposed director details", "Shareholder details", "Board approval", "DPSS acknowledgement"))
+        if any(term in lower for term in ("public notice", "stakeholder", "agents", "bankers", "customers", "merchants")):
+            evidence.extend(("Public notice proof", "Stakeholder communication proof", "Closure record"))
+        if any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "surrender")):
+            evidence.extend(("Form A submission", "Certificate of Authorisation", "CoA surrender proof", "DPSS acknowledgement"))
+        if any(term in lower for term in ("regulatory/supervisory action", "supervisory action")):
+            evidence.extend(("Legal review note", "Compliance sign-off", "Closure record"))
+        return _join_evidence(evidence or PSO_EVIDENCE)
     if _is_digital_fraud_context(obligation, scout):
         return _digital_fraud_evidence_for_obligation(obligation)
     if _is_it_outsourcing_context(obligation, scout):
@@ -1074,6 +1234,49 @@ def _fixed_it_advisory(domain):
     }
 
 
+def _fixed_payment_advisory(obligation):
+    lower = (obligation or "").lower()
+    if any(term in lower for term in ("management", "director", "shareholder", "board")):
+        row = {
+            "business_vertical": "Board Governance / Company Secretary",
+            "sub_vertical": "Corporate Governance",
+            "scope": "Management/director/shareholder change intimation",
+        }
+    elif any(term in lower for term in ("public notice", "stakeholders", "agents", "bankers", "customers", "merchants")):
+        row = {
+            "business_vertical": "Operations / Merchant Acquiring",
+            "sub_vertical": "Stakeholder Communications",
+            "scope": "Public notice and stakeholder intimation",
+        }
+    elif any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee")):
+        row = {
+            "business_vertical": "Legal & Secretarial",
+            "sub_vertical": "Regulatory Transactions",
+            "scope": "PSO control or payment activity transfer approval",
+        }
+    elif any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "dpss", "rbi")):
+        row = {
+            "business_vertical": "Regulatory Compliance Department",
+            "sub_vertical": "Payment Systems Compliance",
+            "scope": "DPSS application and authorisation documentation",
+        }
+    else:
+        row = {
+            "business_vertical": "Payments Vertical",
+            "sub_vertical": "Payment Systems Compliance",
+            "scope": "Digital payment regulatory approval workflow",
+        }
+
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Payment System Operator prior approval and payment activity transfer requirements",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": "Deterministic digital_payment / PSO domain mapping.",
+    }
+
+
 def _fallback_advisory(department, obligation):
     lower = (obligation or "").lower()
     if "customer" in lower or "notify" in lower:
@@ -1102,6 +1305,8 @@ def _fallback_advisory(department, obligation):
 
 
 def _advisory_for_gap(obligation, domain, scout, department):
+    if domain == "digital_payment":
+        return _fixed_payment_advisory(obligation)
     if domain == "customer":
         return _fallback_advisory(department, obligation)
 
@@ -1123,6 +1328,8 @@ def _advisory_for_gap(obligation, domain, scout, department):
 
 
 def _basis(change_type, old_requirement, new_requirement):
+    if old_requirement == NO_CLOSE_PSO_REFERENCE:
+        return "No closely matching approved PSO reference was found in the current policy library; unrelated fraud/cyber references were not used."
     if old_requirement == NO_PRIOR_POLICY:
         return "No relevant old RBI circular or internal policy was found in available regulatory memory."
     return f"Compared old requirement [{old_requirement}] with new requirement [{new_requirement}]."

@@ -12,6 +12,7 @@ OBLIGATION_PHRASES = (
     "must",
     "shall",
     "required to",
+    "require prior approval",
     "should ensure",
     "directed to",
     "report",
@@ -28,6 +29,11 @@ OBLIGATION_PHRASES = (
     "disclose",
     "review",
     "update",
+    "inform",
+    "apply",
+    "surrender",
+    "liable",
+    "public notice",
 )
 
 OBLIGATION_VERBS = (
@@ -49,6 +55,9 @@ OBLIGATION_VERBS = (
     "assign",
     "complete",
     "ensure",
+    "inform",
+    "apply",
+    "surrender",
     "conduct",
     "perform",
     "test",
@@ -90,6 +99,41 @@ IT_OUTSOURCING_EVIDENCE = (
     "Management approval",
 )
 
+PSO_EVIDENCE = (
+    "RBI prior approval application",
+    "DPSS acknowledgement",
+    "Board approval",
+    "Proposed director details",
+    "Shareholder details",
+    "Public notice proof",
+    "Stakeholder communication proof",
+    "Form A submission",
+    "Certificate of Authorisation",
+    "CoA surrender proof",
+    "Legal review note",
+    "Compliance sign-off",
+    "Closure record",
+)
+
+PSO_CONTEXT_TERMS = (
+    "non-bank pso",
+    "non-bank payment system operator",
+    "payment system operator",
+    "takeover/acquisition of control",
+    "acquisition of control",
+    "sale/transfer of payment activity",
+    "payment activity transfer",
+    "dpss",
+    "certificate of authorisation",
+    "certificate of authorization",
+    "payment and settlement systems act",
+    "form a",
+    "payment aggregator",
+    "payment gateway",
+    "prepaid payment instrument",
+    "ppi",
+)
+
 DEADLINE_PATTERNS = (
     r"within\s+\d{1,3}\s+(?:hours?|days?|months?|years?)",
     r"by\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",
@@ -111,6 +155,8 @@ DATE_PATTERNS = (
 )
 
 RISK_RULES = (
+    ("payment system approval", ("non-bank pso", "payment system operator", "takeover/acquisition of control", "acquisition of control", "sale/transfer of payment activity", "dpss", "certificate of authorisation", "certificate of authorization", "form a")),
+    ("digital payment", ("payment aggregator", "payment gateway", "prepaid payment instrument", "ppi", "payment and settlement systems act")),
     ("IT outsourcing", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "outsourcing arrangement", "outsourcing agreement")),
     ("third-party risk", ("third-party", "service provider", "vendor", "due diligence", "subcontractor")),
     ("cloud outsourcing", ("cloud", "cloud service provider", "data portability", "secure deletion")),
@@ -135,6 +181,7 @@ RISK_RULES = (
 )
 
 CATEGORY_RULES = (
+    ("Payment System Operator / RBI Approval", ("non-bank pso", "payment system operator", "takeover/acquisition of control", "acquisition of control", "sale/transfer of payment activity", "dpss", "certificate of authorisation", "certificate of authorization", "form a")),
     ("Digital Fraud Reporting", ("digital fraud", "payment fraud", "fraud reporting")),
     ("IT Outsourcing / Third-Party Risk", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "service provider", "third-party", "outsourcing agreement", "cloud service provider", "security operations centre", "security operations center")),
     ("Mule Account Monitoring", ("mule account", "mule", "suspicious account")),
@@ -147,6 +194,12 @@ CATEGORY_RULES = (
 )
 
 DEPARTMENT_RULES = (
+    ("Payments Vertical / Payment Systems Compliance", ("non-bank pso", "payment system operator", "payment activity", "payment aggregator", "payment gateway", "ppi", "dpss", "form a")),
+    ("Regulatory Compliance Department", ("prior approval of rbi", "rbi approval", "inform rbi", "dpss", "payment and settlement systems act")),
+    ("Legal & Secretarial", ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "legal", "public notice")),
+    ("Board Governance / Company Secretary", ("change in management", "directors", "board approval", "shareholder")),
+    ("Risk & Compliance", ("regulatory/supervisory action", "supervisory action", "risk", "compliance sign-off")),
+    ("Operations / Merchant Acquiring", ("merchants", "agents", "bankers", "customers", "stakeholders", "merchant acquiring")),
     ("IT Vertical", ("outsourced it services", "it outsourcing", "application maintenance", "data centre", "network services", "technology owner", "central inventory", "cloud governance")),
     ("Procurement & Vendor Management", ("service provider", "vendor", "third-party", "due diligence", "subcontractor", "cloud provider")),
     ("Legal Department", ("outsourcing agreement", "legally binding", "contract", "audit rights", "termination rights", "exit strategy", "rbi inspection access")),
@@ -167,6 +220,11 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, and Compliance sign-off", ("prior approval of rbi", "rbi approval", "takeover", "acquisition of control")),
+    ("Payment activity transfer checklist, Legal review note, Board approval, and Compliance sign-off", ("sale/transfer of payment activity", "payment activity transfer", "transferor", "transferee")),
+    ("DPSS application pack, proposed director details, shareholder details, and closure record", ("dpss", "director", "shareholder")),
+    ("Public notice proof and stakeholder communication proof", ("public notice", "stakeholders", "agents", "bankers", "customers", "merchants")),
+    ("Form A submission, Certificate of Authorisation, CoA surrender proof, and DPSS acknowledgement", ("form a", "certificate of authorisation", "certificate of authorization", "surrender")),
     ("Outsourcing policy and management approval", ("board-approved it outsourcing policy", "outsourcing policy", "senior management")),
     ("Outsourcing policy, audit report, and management approval", ("central inventory", "inventory of outsourced it", "outsourced it services")),
     ("Service provider due diligence checklist and management approval", ("due diligence", "service provider", "third-party", "subcontractor")),
@@ -190,6 +248,78 @@ def _normalize_space(value):
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def _normalize_pdf_text(text):
+    if not text:
+        return ""
+
+    normalized = (
+        str(text)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+    replacements = (
+        (r"\bReview\s+ed\b", "Reviewed"),
+        (r"\bT\s+he\b", "The"),
+        (r"\bt\s+he\b", "the"),
+        (r"\bbuy\s+er\b", "buyer"),
+        (r"\bBuy\s+er\b", "Buyer"),
+        (r"\bsell\s+er\b", "seller"),
+        (r"\btrans\s+feror\b", "transferor"),
+        (r"\btrans\s+feree\b", "transferee"),
+        (r"\bBi\s*-\s*monthly\b", "Bi-monthly"),
+        (r"\bnon\s*-\s*bank\b", "non-bank"),
+        (r"\bsale\s*/\s*transfer\b", "sale/transfer"),
+        (r"\btakeover\s*/\s*acquisition\b", "takeover/acquisition"),
+        (r"\bCertificate\s+of\s+Authori[sz]\s+ation\b", "Certificate of Authorisation"),
+        (r"\bPayment\s+System\s+Operator\s+s\b", "Payment System Operators"),
+        (r"\bP\s*S\s*O\b", "PSO"),
+    )
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.I)
+
+    raw_lines = [re.sub(r"[ \t\f\v]+", " ", line).strip() for line in normalized.splitlines()]
+    merged_lines = []
+    for line in raw_lines:
+        if not line:
+            if merged_lines and merged_lines[-1] != "":
+                merged_lines.append("")
+            continue
+
+        if not merged_lines or merged_lines[-1] == "":
+            merged_lines.append(line)
+            continue
+
+        previous = merged_lines[-1]
+        previous_lower = previous.lower().rstrip(" :-")
+        current_starts_continuation = bool(
+            re.match(
+                r"^(?:and|or|of|for|to|in|with|by|whether|where|which|who|whose|"
+                r"including|before|after|when|wherever|not|whether|the|a|an|\([ivxlcdm0-9]+\)|[a-z])\b",
+                line,
+                flags=re.I,
+            )
+        )
+        previous_incomplete = (
+            not re.search(r"[.!?;:]$", previous)
+            or previous_lower.endswith((" of", " and", " or", " for", " to", " for obtaining", " in the following cases"))
+        )
+        if previous_incomplete or current_starts_continuation:
+            merged_lines[-1] = f"{previous} {line}"
+        else:
+            merged_lines.append(line)
+
+    normalized = "\n".join(merged_lines)
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    normalized = re.sub(r"\s+([,.;:])", r"\1", normalized)
+    normalized = re.sub(r"\(\s+", "(", normalized)
+    normalized = re.sub(r"\s+\)", ")", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
 def _clean_line(line):
     return re.sub(r"^\s*[-*0-9.)]+\s*", "", line or "").strip()
 
@@ -206,7 +336,8 @@ def _dedupe(items):
     seen = set()
     for item in items:
         normalized = _normalize_space(str(item))
-        key = normalized.lower()
+        key = re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+        key = re.sub(r"^(?:the|a|an)\s+", "", key)
         if normalized and key not in seen:
             deduped.append(normalized)
             seen.add(key)
@@ -232,6 +363,17 @@ def _is_digital_fraud_context(text, risk_keywords=None, category=None):
             "mule account",
         )
     )
+
+
+def _is_pso_payment_context(text, risk_keywords=None, category=None):
+    context = " ".join(
+        [
+            str(text or ""),
+            str(category or ""),
+            " ".join(str(item) for item in (risk_keywords or [])),
+        ]
+    ).lower()
+    return any(term in context for term in PSO_CONTEXT_TERMS)
 
 
 def _is_it_outsourcing_context(text, risk_keywords=None, category=None):
@@ -341,7 +483,7 @@ def _extract_effective_date(text, deadlines):
 
 def _split_obligation_clauses(sentence):
     prepared = re.sub(
-        r"\s+and\s+(?=(?:notify|retain|submit|maintain|monitor|escalate|reconcile|verify|preserve|disclose|review|update|implement|conduct|perform|test)\b)",
+        r"\s+and\s+(?=(?:notify|retain|submit|maintain|monitor|escalate|reconcile|verify|preserve|disclose|review|update|implement|conduct|perform|test|inform|apply|surrender)\b)",
         ", ",
         sentence,
         flags=re.I,
@@ -349,7 +491,7 @@ def _split_obligation_clauses(sentence):
     split_pattern = (
         r",\s+(?=(?:and\s+)?(?:notify|retain|submit|maintain|monitor|escalate|"
         r"reconcile|verify|preserve|disclose|review|update|implement|conduct|"
-        r"perform|test|report)\b)"
+        r"perform|test|report|inform|apply|surrender)\b)"
     )
     return [_clean_line(part) for part in re.split(split_pattern, prepared) if _clean_line(part)]
 
@@ -367,20 +509,96 @@ def _normalize_obligation(clause):
     return cleaned[0].upper() + cleaned[1:]
 
 
+def _is_incomplete_obligation(clause):
+    lower = _normalize_space(clause).lower().strip(" .;:-")
+    if len(lower) < 24:
+        return True
+    if "in the following cases" in lower:
+        return True
+    if lower.startswith(("reviewed and they shall", "reviewed they shall")):
+        return True
+    return lower.endswith(
+        (
+            " of",
+            " and",
+            " or",
+            " to",
+            " for",
+            " for obtaining",
+            " in the following cases",
+            " in the following cases -",
+            " in the following cases –",
+        )
+    )
+
+
+def _extract_pso_obligations(text):
+    normalized = _normalize_space(text)
+    lower = normalized.lower()
+    if not _is_pso_payment_context(lower):
+        return []
+
+    obligations = []
+    if "takeover" in lower or "acquisition of control" in lower:
+        obligations.append(
+            "Non-bank PSOs shall require prior approval of RBI for takeover/acquisition of control, whether or not it results in change of management."
+        )
+    if "sale/transfer of payment activity" in lower or "payment activity transfer" in lower:
+        if "not authorised" in lower or "not authorized" in lower or "not authorised to undertake similar" in lower or "not authorized to undertake similar" in lower:
+            obligations.append(
+                "Non-bank PSOs shall require prior approval of RBI for sale/transfer of payment activity to an entity not authorised to undertake similar activity."
+            )
+        if "authorised" in lower or "authorized" in lower:
+            obligations.append(
+                "Non-bank PSOs shall inform RBI within 15 calendar days for sale/transfer of payment activity to an entity authorised for similar activity."
+            )
+    if "change in management" in lower or "directors" in lower or "director" in lower:
+        obligations.append(
+            "Non-bank PSOs shall inform RBI within 15 calendar days for change in management/directors."
+        )
+    if "public notice" in lower:
+        obligations.append(
+            "After obtaining RBI approval, a public notice of at least 15 calendar days shall be given before effecting changes."
+        )
+    if any(term in lower for term in ("stakeholders", "agents", "bankers", "customers", "merchants")):
+        obligations.append(
+            "The seller/transferor non-bank PSO shall inform stakeholders including agents, bankers, customers, and merchants at least 15 calendar days before changes."
+        )
+    if "form a" in lower or "apply for authorisation" in lower or "apply for authorization" in lower:
+        obligations.append(
+            "Buyer/transferee must apply for authorisation in Form A when required."
+        )
+    if "surrender" in lower and ("certificate of authorisation" in lower or "certificate of authorization" in lower or "coa" in lower):
+        obligations.append(
+            "Seller/transferor PSO shall surrender its Certificate of Authorisation where applicable."
+        )
+    if "regulatory/supervisory action" in lower or "supervisory action" in lower:
+        obligations.append(
+            "Buyer/transferee shall be liable for regulatory/supervisory action for periods prior to sale/transfer."
+        )
+
+    return obligations
+
+
 def extract_obligations(text):
     obligations = []
+    normalized_text = _normalize_pdf_text(text)
+    pso_obligations = _extract_pso_obligations(normalized_text)
+    obligations.extend(pso_obligations)
     candidates = []
-    for line in text.splitlines():
+    for line in normalized_text.splitlines():
         cleaned = _clean_line(line)
         if cleaned and not _is_metadata_line(cleaned):
             candidates.extend(re.split(r"(?<=[.!?])\s+", cleaned))
 
     if not candidates:
-        candidates = re.split(r"(?<=[.!?])\s+", text)
+        candidates = re.split(r"(?<=[.!?])\s+", normalized_text)
 
     for sentence in candidates:
         for clause in _split_obligation_clauses(sentence):
             if len(clause) < 8:
+                continue
+            if _is_incomplete_obligation(clause):
                 continue
             if _has_obligation_phrase(clause):
                 obligations.append(_normalize_obligation(clause))
@@ -399,6 +617,8 @@ def _detect_risk_keywords(text):
 
 def _detect_category(text, risk_keywords):
     lower = text.lower()
+    if _is_pso_payment_context(lower, risk_keywords):
+        return "Payment System Operator / RBI Approval"
     for category, terms in CATEGORY_RULES:
         if any(term in lower for term in terms):
             return category
@@ -409,6 +629,20 @@ def _detect_category(text, risk_keywords):
 
 def _detect_departments(text, obligations):
     lower = f"{text} {' '.join(obligations)}".lower()
+    if _is_pso_payment_context(lower):
+        departments = ["Payments Vertical / Payment Systems Compliance", "Regulatory Compliance Department"]
+        if any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "public notice")):
+            departments.append("Legal & Secretarial")
+        if any(term in lower for term in ("directors", "director", "management", "shareholder", "board")):
+            departments.append("Board Governance / Company Secretary")
+        if any(term in lower for term in ("stakeholders", "agents", "bankers", "customers", "merchants")):
+            departments.append("Operations / Merchant Acquiring")
+        if any(term in lower for term in ("regulatory/supervisory action", "supervisory action", "risk")):
+            departments.append("Risk & Compliance")
+        if any(term in lower for term in ("audit", "evidence review")):
+            departments.append("Internal Audit")
+        return _dedupe(departments)
+
     departments = []
     for department, terms in DEPARTMENT_RULES:
         if any(term in lower for term in terms):
@@ -420,6 +654,8 @@ def _detect_departments(text, obligations):
 
 def _detect_evidence(text, obligations, risk_keywords=None, category=None):
     lower = f"{text} {' '.join(obligations)}".lower()
+    if _is_pso_payment_context(lower, risk_keywords, category):
+        return list(PSO_EVIDENCE)
     if _is_digital_fraud_context(lower, risk_keywords, category):
         return list(DIGITAL_FRAUD_EVIDENCE)
     if _is_it_outsourcing_context(lower, risk_keywords, category):
@@ -476,7 +712,7 @@ def get_circular_by_id(circular_id):
 
 
 def parse_circular_text(circular_text=None, file_name=None):
-    text = circular_text or ""
+    text = _normalize_pdf_text(circular_text or "")
     cleaned_text = _normalize_space(text)
     engine_notes = ["Scout Parser used deterministic offline extraction."]
 
@@ -528,7 +764,7 @@ def parse_circular_text(circular_text=None, file_name=None):
         for advisory in mapped_advisories
         if advisory.get("match_score", 0) > 1
     ]
-    affected_departments = mapped_departments or departments
+    affected_departments = departments if _is_pso_payment_context(cleaned_text, risk_keywords, category) else (mapped_departments or departments)
 
     if not obligations:
         engine_notes.append("No explicit obligation phrase was found; downstream agents should use manual-review fallback.")
