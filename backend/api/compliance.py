@@ -19,6 +19,7 @@ from engines.compliance.chroma_store import (
     infer_reference_domain,
     list_circulars as list_memory_circulars,
     source_status_for_text,
+    store_status,
 )
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 ROUTES = ["analyze", "analyze/upload", "evidence/verify", "circulars", "actions", "references"]
 
 REFERENCE_DOMAINS = {
+    "account_aggregator",
     "digital_fraud",
     "it_outsourcing",
     "kyc_aml",
@@ -55,6 +57,17 @@ PSO_REFERENCE_TERMS = (
     "payment aggregator",
     "payment gateway",
     "ppi",
+)
+
+ACCOUNT_AGGREGATOR_REFERENCE_TERMS = (
+    "account aggregator",
+    "financial information provider",
+    "fip",
+    "clearing corporation of india limited",
+    "ccil",
+    "retail direct gilt",
+    "government securities",
+    "g-sec",
 )
 
 SAMPLE_CIRCULARS = [
@@ -335,6 +348,11 @@ def _contains_pso_terms(value: str) -> bool:
     return any(term in lower for term in PSO_REFERENCE_TERMS)
 
 
+def _contains_account_aggregator_terms(value: str) -> bool:
+    lower = (value or "").lower()
+    return any(term in lower for term in ACCOUNT_AGGREGATOR_REFERENCE_TERMS)
+
+
 def _filter_similar_references_for_context(similar_circulars: list, obligations: list, policy_gaps: list) -> list:
     context_parts = [str(item) for item in obligations]
     for gap in policy_gaps:
@@ -343,7 +361,19 @@ def _filter_similar_references_for_context(similar_circulars: list, obligations:
                 str(gap.get(key) or "")
                 for key in ("new_requirement", "existing_reference", "old_requirement", "policy_gap", "gap")
             )
-    if not _contains_pso_terms(" ".join(context_parts)):
+    context_text = " ".join(context_parts)
+    if _contains_account_aggregator_terms(context_text):
+        filtered = []
+        for item in similar_circulars:
+            if isinstance(item, dict):
+                text = " ".join(str(item.get(key) or "") for key in ("title", "summary", "content", "text", "category", "id", "domain"))
+            else:
+                text = str(item)
+            if _contains_account_aggregator_terms(text):
+                filtered.append(item)
+        return filtered
+
+    if not _contains_pso_terms(context_text):
         return similar_circulars
 
     filtered = []
@@ -793,9 +823,12 @@ def get_circular(circular_id: str):
 
 @router.get("/health")
 def compliance_health():
+    memory_status = store_status()
     return {
         "status": "ok",
         "module": "Member D Compliance",
         "offline_mode": True,
         "routes": ROUTES,
+        "memory_backend": memory_status.get("active_backend"),
+        "memory": memory_status,
     }

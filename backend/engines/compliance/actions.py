@@ -44,6 +44,15 @@ PSO_EVIDENCE = (
     "Closure record",
 )
 
+ACCOUNT_AGGREGATOR_EVIDENCE = (
+    "Updated Account Aggregator policy",
+    "CCIL FIP inclusion record",
+    "Application/configuration update proof",
+    "Compliance sign-off",
+    "Stakeholder communication proof",
+    "Implementation closure record",
+)
+
 PSO_CONTEXT_TERMS = (
     "non-bank pso",
     "payment system operator",
@@ -63,7 +72,22 @@ PSO_CONTEXT_TERMS = (
     "ppi",
 )
 
+ACCOUNT_AGGREGATOR_CONTEXT_TERMS = (
+    "account aggregator",
+    "financial information provider",
+    "fip",
+    "clearing corporation of india limited",
+    "ccil",
+    "retail direct gilt",
+    "government securities",
+    "g-sec",
+)
+
 DEPARTMENT_RULES = (
+    ("Regulatory Compliance Department", ("account aggregator", "financial information provider", "fip", "ccil")),
+    ("Digital Banking / Account Aggregator Operations", ("account aggregator", "data sharing", "consent artefact", "consent artifact", "fip")),
+    ("Treasury / Government Securities Operations", ("government securities", "retail direct gilt", "g-sec", "gilt accounts", "ccil")),
+    ("IT/Application Owner for Account Aggregator integration", ("application", "configuration", "integration", "systems", "data sharing")),
     ("Payments Vertical / Payment Systems Compliance", ("non-bank pso", "payment system operator", "payment activity", "payment aggregator", "payment gateway", "ppi", "dpss", "form a")),
     ("Regulatory Compliance Department", ("prior approval of rbi", "rbi approval", "inform rbi", "dpss", "payment and settlement systems act")),
     ("Legal & Secretarial", ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "legal", "public notice")),
@@ -90,6 +114,7 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("Updated Account Aggregator policy, CCIL FIP inclusion record, Application/configuration update proof, Compliance sign-off, Stakeholder communication proof, and Implementation closure record", ("account aggregator", "financial information provider", "fip", "ccil", "retail direct gilt", "government securities")),
     ("RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, and Compliance sign-off", ("prior approval of rbi", "rbi approval", "takeover", "acquisition of control")),
     ("Sale/transfer approval checklist, Board approval, Legal review note, Compliance sign-off, and Closure record", ("sale/transfer of payment activity", "payment activity transfer", "transferor", "transferee")),
     ("DPSS application pack, proposed director details, shareholder details, and Closure record", ("dpss", "director", "shareholder")),
@@ -151,6 +176,11 @@ def _is_pso_payment_context(text, scout_result=None):
     return any(term in context for term in PSO_CONTEXT_TERMS)
 
 
+def _is_account_aggregator_context(text, scout_result=None):
+    context = f"{text or ''} {_scout_context(scout_result)}".lower()
+    return any(term in context for term in ACCOUNT_AGGREGATOR_CONTEXT_TERMS)
+
+
 def _is_it_outsourcing_context(text, scout_result=None):
     context = f"{text or ''} {_scout_context(scout_result)}".lower()
     return any(
@@ -197,6 +227,9 @@ def _prioritize_action_points(action_points):
         "Payments Vertical",
         "Payments Vertical / Payment Systems Compliance",
         "Regulatory Compliance Department",
+        "Digital Banking / Account Aggregator Operations",
+        "Treasury / Government Securities Operations",
+        "IT/Application Owner for Account Aggregator integration",
         "Legal & Secretarial",
         "Board Governance / Company Secretary",
         "Operations / Merchant Acquiring",
@@ -271,6 +304,16 @@ def _deadline_days(deadline):
 
 def _department_for_text(text, fallback=None):
     lower = (text or "").lower()
+    if _is_account_aggregator_context(lower):
+        matched = ["Regulatory Compliance Department", "Digital Banking / Account Aggregator Operations"]
+        if any(term in lower for term in ("government securities", "retail direct gilt", "g-sec", "ccil")):
+            matched.append("Treasury / Government Securities Operations")
+        if any(term in lower for term in ("policy", "framework", "reference", "included", "inclusion")):
+            matched.append("Legal & Secretarial")
+        if any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+            matched.append("IT/Application Owner for Account Aggregator integration")
+        return " + ".join(dict.fromkeys(matched).keys())
+
     if _is_pso_payment_context(lower):
         matched = ["Payments Vertical / Payment Systems Compliance"]
         if any(term in lower for term in ("prior approval", "rbi", "dpss", "form a", "certificate of authorisation", "certificate of authorization")):
@@ -443,6 +486,46 @@ def _fixed_payment_advisory_for_text(text):
     }
 
 
+def _fixed_account_aggregator_advisory_for_text(text):
+    lower = (text or "").lower()
+    if not _is_account_aggregator_context(lower):
+        return None
+
+    if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec")):
+        row = {
+            "business_vertical": "Treasury / Government Securities Operations",
+            "sub_vertical": "Retail Direct Gilt Operations",
+            "scope": "Government Securities data sharing under Account Aggregator",
+        }
+    elif any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+        row = {
+            "business_vertical": "IT/Application Owner for Account Aggregator integration",
+            "sub_vertical": "Account Aggregator Platform Integration",
+            "scope": "FIP configuration and data sharing workflow update",
+        }
+    elif any(term in lower for term in ("policy", "framework", "reference", "included", "inclusion")):
+        row = {
+            "business_vertical": "Regulatory Compliance Department",
+            "sub_vertical": "Account Aggregator Compliance",
+            "scope": "Policy/reference register update for CCIL FIP inclusion",
+        }
+    else:
+        row = {
+            "business_vertical": "Digital Banking / Account Aggregator Operations",
+            "sub_vertical": "Account Aggregator Operations",
+            "scope": "Operational readiness for CCIL as Financial Information Provider",
+        }
+
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Account Aggregator Framework - Financial Information Provider inclusion",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": "Deterministic account_aggregator / FIP / CCIL domain mapping.",
+    }
+
+
 def _advisory_from_gap_or_match(gap, text, scout_result, department):
     if gap and gap.get("business_vertical") and gap.get("sub_vertical"):
         return {
@@ -455,7 +538,11 @@ def _advisory_from_gap_or_match(gap, text, scout_result, department):
             "assignment_basis": gap.get("assignment_basis", "Mapped from Delta policy gap advisory assignment."),
         }
 
-    fixed_advisory = _fixed_payment_advisory_for_text(text) or _fixed_it_advisory_for_text(text)
+    fixed_advisory = (
+        _fixed_account_aggregator_advisory_for_text(text)
+        or _fixed_payment_advisory_for_text(text)
+        or _fixed_it_advisory_for_text(text)
+    )
     if fixed_advisory:
         return fixed_advisory
 
@@ -542,7 +629,23 @@ def _pso_evidence_for_text(text):
     return _join_evidence(evidence or PSO_EVIDENCE)
 
 
+def _account_aggregator_evidence_for_text(text):
+    lower = (text or "").lower()
+    evidence = ["Updated Account Aggregator policy", "Compliance sign-off", "Implementation closure record"]
+    if any(term in lower for term in ("ccil", "clearing corporation of india limited", "financial information provider", "fip")):
+        evidence.append("CCIL FIP inclusion record")
+    if any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+        evidence.append("Application/configuration update proof")
+    if any(term in lower for term in ("operations", "stakeholder", "notify", "owner")):
+        evidence.append("Stakeholder communication proof")
+    if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec")):
+        evidence.append("Retail Direct Gilt / Government Securities workflow update proof")
+    return _join_evidence(evidence or ACCOUNT_AGGREGATOR_EVIDENCE)
+
+
 def _strict_evidence_for_context(text, scout_result=None):
+    if _is_account_aggregator_context(text, scout_result):
+        return _account_aggregator_evidence_for_text(text)
     if _is_pso_payment_context(text, scout_result):
         return _pso_evidence_for_text(text)
     if _is_digital_fraud_context(text, scout_result):
@@ -588,6 +691,10 @@ def _priority(deadline_days, text, severity=None):
         else:
             score = max(score, 5)
         score = min(score, 8)
+    elif _is_account_aggregator_context(lower):
+        score = max(score, 6)
+        if any(term in lower for term in ("application", "configuration", "systems", "data sharing", "retail direct gilt", "government securities")):
+            score = max(score, 7)
     elif any(term in lower for term in ("fraud", "cyber", "mule", "customer", "kyc", "aml", "outsourcing", "cloud", "service provider", "soc")):
         score = min(10, score + 1)
     if severity == "Critical":
@@ -608,6 +715,19 @@ def _priority(deadline_days, text, severity=None):
 
 def _action_template(text, change_type=None, scout_result=None):
     lower = (text or "").lower()
+    if _is_account_aggregator_context(text, scout_result):
+        if any(term in lower for term in ("compliance sign-off", "implementation evidence", "closure record", "maintained")):
+            return "Maintain compliance sign-off and implementation evidence for CCIL FIP inclusion."
+        if any(term in lower for term in ("notify", "notified", "operations", "application owners", "owner")):
+            return "Notify Account Aggregator operations and application owners about CCIL FIP inclusion."
+        if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec")):
+            return "Update Retail Direct Gilt / Government Securities data sharing workflow for CCIL as FIP."
+        if any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+            return "Update Account Aggregator application/configuration to reflect CCIL's FIP role."
+        if any(term in lower for term in ("policy", "framework", "reference", "included", "inclusion", "ccil", "financial information provider")):
+            return "Update Account Aggregator policy/reference register to include CCIL as FIP."
+        return "Maintain compliance sign-off and implementation evidence for CCIL FIP inclusion."
+
     if _is_pso_payment_context(text, scout_result):
         if "within 15 calendar days" in lower and "inform rbi" in lower:
             return "Track 15-calendar-day RBI intimation for management/director or authorised payment activity transfer changes."
@@ -789,6 +909,15 @@ def _map_from_obligation(obligation, index, scout_result):
     }
 
 
+def _account_aggregator_supplemental_obligations(scout_result):
+    if not _is_account_aggregator_context("", scout_result):
+        return []
+    return [
+        "Account Aggregator operations and application owners should be notified about CCIL's inclusion as a Financial Information Provider.",
+        "Compliance sign-off and implementation evidence should be maintained for CCIL FIP inclusion under the Account Aggregator framework.",
+    ]
+
+
 def extract_action_points(content=None, scout_result=None, delta_result=None):
     """
     Generate bank-realistic Measurable Action Points from Scout and Delta output.
@@ -808,7 +937,12 @@ def extract_action_points(content=None, scout_result=None, delta_result=None):
         if isinstance(gap, dict):
             action_points.append(_map_from_gap(gap, len(action_points) + 1, scout))
 
-    for obligation in obligations:
+    mapped_obligations = list(obligations)
+    for supplemental_obligation in _account_aggregator_supplemental_obligations(scout):
+        if supplemental_obligation not in mapped_obligations:
+            mapped_obligations.append(supplemental_obligation)
+
+    for obligation in mapped_obligations:
         if len(action_points) >= 24:
             break
         action_points.append(_map_from_obligation(obligation, len(action_points) + 1, scout))

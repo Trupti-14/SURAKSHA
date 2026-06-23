@@ -151,6 +151,15 @@ PSO_EVIDENCE = (
     "Closure record",
 )
 
+ACCOUNT_AGGREGATOR_EVIDENCE = (
+    "Updated Account Aggregator policy",
+    "CCIL FIP inclusion record",
+    "Application/configuration update proof",
+    "Compliance sign-off",
+    "Stakeholder communication proof",
+    "Implementation closure record",
+)
+
 PSO_CONTEXT_TERMS = (
     "non-bank pso",
     "non-bank payment system operator",
@@ -168,6 +177,15 @@ PSO_CONTEXT_TERMS = (
     "payment gateway",
     "prepaid payment instrument",
     "ppi",
+)
+
+ACCOUNT_AGGREGATOR_CONTEXT_TERMS = (
+    "account aggregator",
+    "financial information provider",
+    "clearing corporation of india limited",
+    "ccil",
+    "retail direct gilt",
+    "government securities",
 )
 
 DEADLINE_PATTERNS = (
@@ -191,6 +209,7 @@ DATE_PATTERNS = (
 )
 
 RISK_RULES = (
+    ("account aggregator", ("account aggregator", "financial information provider", "clearing corporation of india limited", "ccil", "retail direct gilt", "government securities")),
     ("payment system approval", ("non-bank pso", "payment system operator", "takeover/acquisition of control", "acquisition of control", "sale/transfer of payment activity", "dpss", "certificate of authorisation", "certificate of authorization", "form a")),
     ("digital payment", ("payment aggregator", "payment gateway", "prepaid payment instrument", "ppi", "payment and settlement systems act")),
     ("IT outsourcing", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "outsourcing arrangement", "outsourcing agreement")),
@@ -217,6 +236,7 @@ RISK_RULES = (
 )
 
 CATEGORY_RULES = (
+    ("Account Aggregator / Financial Information Provider / CCIL", ("account aggregator", "financial information provider", "clearing corporation of india limited", "ccil", "retail direct gilt", "government securities")),
     ("Payment System Operator / RBI Approval", ("non-bank pso", "payment system operator", "takeover/acquisition of control", "acquisition of control", "sale/transfer of payment activity", "dpss", "certificate of authorisation", "certificate of authorization", "form a")),
     ("Digital Fraud Reporting", ("digital fraud", "payment fraud", "fraud reporting")),
     ("IT Outsourcing / Third-Party Risk", ("it outsourcing", "outsourced it", "central inventory", "outsourcing policy", "service provider", "third-party", "outsourcing agreement", "cloud service provider", "security operations centre", "security operations center")),
@@ -230,6 +250,11 @@ CATEGORY_RULES = (
 )
 
 DEPARTMENT_RULES = (
+    ("Regulatory Compliance Department", ("account aggregator", "financial information provider", "fip", "ccil")),
+    ("Digital Banking / Account Aggregator Operations", ("account aggregator", "data sharing", "consent artefact", "fip")),
+    ("Treasury / Government Securities Operations", ("government securities", "retail direct gilt", "gilt", "ccil")),
+    ("Legal & Secretarial", ("framework", "inclusion", "policy references")),
+    ("IT/Application Owner for Account Aggregator integration", ("application", "configuration", "integration", "systems")),
     ("Payments Vertical / Payment Systems Compliance", ("non-bank pso", "payment system operator", "payment activity", "payment aggregator", "payment gateway", "ppi", "dpss", "form a")),
     ("Regulatory Compliance Department", ("prior approval of rbi", "rbi approval", "inform rbi", "dpss", "payment and settlement systems act")),
     ("Legal & Secretarial", ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "legal", "public notice")),
@@ -256,6 +281,7 @@ DEPARTMENT_RULES = (
 )
 
 EVIDENCE_RULES = (
+    ("Updated Account Aggregator policy, CCIL FIP inclusion record, Application/configuration update proof, Compliance sign-off, Stakeholder communication proof, and Implementation closure record", ("account aggregator", "financial information provider", "ccil", "retail direct gilt", "government securities")),
     ("RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, and Compliance sign-off", ("prior approval of rbi", "rbi approval", "takeover", "acquisition of control")),
     ("Payment activity transfer checklist, Legal review note, Board approval, and Compliance sign-off", ("sale/transfer of payment activity", "payment activity transfer", "transferor", "transferee")),
     ("DPSS application pack, proposed director details, shareholder details, and closure record", ("dpss", "director", "shareholder")),
@@ -300,6 +326,10 @@ def _normalize_pdf_text(text):
         (r"\bReview\s+ed\b", "Reviewed"),
         (r"\bT\s+he\b", "The"),
         (r"\bt\s+he\b", "the"),
+        (r"\bT\s+o\b", "To"),
+        (r"\bt\s+o\b", "to"),
+        (r"\bAl\s+l\b", "All"),
+        (r"\bal\s+l\b", "all"),
         (r"\bbuy\s+er\b", "buyer"),
         (r"\bBuy\s+er\b", "Buyer"),
         (r"\bsell\s+er\b", "seller"),
@@ -367,6 +397,48 @@ def _is_metadata_line(line):
     return key in METADATA_KEYS
 
 
+def _is_noisy_obligation_line(line):
+    text = _normalize_space(line)
+    lower = text.lower().strip(" :-")
+    if not text:
+        return True
+    if _is_metadata_line(text):
+        return True
+    if re.match(r"^(?:madam|dear sir|sir|madam\s*/\s*dear sir)\b", lower) or "madam/dear sir" in lower or "dear sir" in lower:
+        return True
+    if re.match(r"^(?:to\s+all|to|all)\s+(?:the\s+)?(?:chairman|managing director|chief executive|regulated entities|participants|banks|non-bank)", lower):
+        return True
+    if any(
+        phrase in lower
+        for phrase in (
+            "reserve bank of india",
+            "central office",
+            "department of regulation",
+            "department of supervision",
+            "department of payment and settlement systems",
+            "shahid bhagat singh",
+            "fort mumbai",
+            "rbi.org.in",
+            "@rbi.org.in",
+            "email",
+            "e-mail",
+            "telephone",
+            "phone",
+            "fax",
+            "hindi is easy",
+            "hindi is very easy",
+        )
+    ):
+        return True
+    if re.match(r"^(?:rbi|dor|co|ref|no\.|date)\b[/:.\-A-Z0-9 ]*$", text, flags=re.I):
+        return True
+    if re.match(r"^[A-Z]{2,}(?:/[A-Z0-9.-]+){2,}", text):
+        return True
+    if re.match(r"^\d{1,2}\s+[A-Za-z]+\s+\d{4}$", text):
+        return True
+    return False
+
+
 def _dedupe(items):
     deduped = []
     seen = set()
@@ -410,6 +482,17 @@ def _is_pso_payment_context(text, risk_keywords=None, category=None):
         ]
     ).lower()
     return any(term in context for term in PSO_CONTEXT_TERMS)
+
+
+def _is_account_aggregator_context(text, risk_keywords=None, category=None):
+    context = " ".join(
+        [
+            str(text or ""),
+            str(category or ""),
+            " ".join(str(item) for item in (risk_keywords or [])),
+        ]
+    ).lower()
+    return any(term in context for term in ACCOUNT_AGGREGATOR_CONTEXT_TERMS)
 
 
 def _is_it_outsourcing_context(text, risk_keywords=None, category=None):
@@ -456,6 +539,8 @@ def _extract_title(text, file_name):
     for line in text.splitlines():
         cleaned = _clean_line(line)
         if not cleaned:
+            continue
+        if _is_noisy_obligation_line(cleaned):
             continue
         lower = cleaned.lower()
         if lower.startswith("title:"):
@@ -616,15 +701,40 @@ def _extract_pso_obligations(text):
     return obligations
 
 
+def _extract_account_aggregator_obligations(text):
+    normalized = _normalize_space(text)
+    lower = normalized.lower()
+    if not _is_account_aggregator_context(lower):
+        return []
+
+    obligations = []
+    if "clearing corporation of india limited" in lower or "ccil" in lower:
+        obligations.append(
+            "Clearing Corporation of India Limited has been included as a Financial Information Provider under the Account Aggregator Framework."
+        )
+    if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec", "gilt accounts")):
+        obligations.append(
+            "Regulated Entities should treat CCIL as an eligible Financial Information Provider for Government Securities held in Retail Direct Gilt accounts."
+        )
+    obligations.append(
+        "Relevant systems and policy references should be updated to reflect CCIL's FIP role under the Account Aggregator framework."
+    )
+    return _dedupe(obligations)
+
+
 def extract_obligations(text):
     obligations = []
     normalized_text = _normalize_pdf_text(text)
+    account_aggregator_obligations = _extract_account_aggregator_obligations(normalized_text)
+    if account_aggregator_obligations:
+        return account_aggregator_obligations[:16]
+
     pso_obligations = _extract_pso_obligations(normalized_text)
     obligations.extend(pso_obligations)
     candidates = []
     for line in normalized_text.splitlines():
         cleaned = _clean_line(line)
-        if cleaned and not _is_metadata_line(cleaned):
+        if cleaned and not _is_metadata_line(cleaned) and not _is_noisy_obligation_line(cleaned):
             candidates.extend(re.split(r"(?<=[.!?])\s+", cleaned))
 
     if not candidates:
@@ -653,6 +763,8 @@ def _detect_risk_keywords(text):
 
 def _detect_category(text, risk_keywords):
     lower = text.lower()
+    if _is_account_aggregator_context(lower, risk_keywords):
+        return "Account Aggregator / Financial Information Provider / CCIL"
     if _is_pso_payment_context(lower, risk_keywords):
         return "Payment System Operator / RBI Approval"
     for category, terms in CATEGORY_RULES:
@@ -665,6 +777,14 @@ def _detect_category(text, risk_keywords):
 
 def _detect_departments(text, obligations):
     lower = f"{text} {' '.join(obligations)}".lower()
+    if _is_account_aggregator_context(lower):
+        return [
+            "Regulatory Compliance Department",
+            "Digital Banking / Account Aggregator Operations",
+            "Treasury / Government Securities Operations",
+            "Legal & Secretarial",
+            "IT/Application Owner for Account Aggregator integration",
+        ]
     if _is_pso_payment_context(lower):
         departments = ["Payments Vertical / Payment Systems Compliance", "Regulatory Compliance Department"]
         if any(term in lower for term in ("takeover", "acquisition of control", "sale/transfer", "transferor", "transferee", "public notice")):
@@ -690,6 +810,8 @@ def _detect_departments(text, obligations):
 
 def _detect_evidence(text, obligations, risk_keywords=None, category=None):
     lower = f"{text} {' '.join(obligations)}".lower()
+    if _is_account_aggregator_context(lower, risk_keywords, category):
+        return list(ACCOUNT_AGGREGATOR_EVIDENCE)
     if _is_pso_payment_context(lower, risk_keywords, category):
         return list(PSO_EVIDENCE)
     if _is_digital_fraud_context(lower, risk_keywords, category):
@@ -887,7 +1009,8 @@ def parse_circular_text(circular_text=None, file_name=None):
     llm_extract = _try_local_llm_extract(cleaned_text, engine_notes)
     deterministic_obligations = extract_obligations(text)
     obligations = deterministic_obligations
-    if llm_extract.get("obligations"):
+    account_aggregator_context = _is_account_aggregator_context(cleaned_text, risk_keywords=None)
+    if llm_extract.get("obligations") and not account_aggregator_context:
         obligations = _dedupe(llm_extract["obligations"] + deterministic_obligations)[:16]
 
     deadlines = _dedupe((llm_extract.get("deadlines") or []) + _extract_deadlines(cleaned_text))
@@ -897,10 +1020,11 @@ def parse_circular_text(circular_text=None, file_name=None):
         category == "General Regulatory Compliance"
         and llm_extract.get("domain")
         and not _is_pso_payment_context(cleaned_text, risk_keywords)
+        and not account_aggregator_context
     ):
         category = llm_extract["domain"]
     departments = _detect_departments(cleaned_text, obligations)
-    if llm_extract.get("departments") and not _is_pso_payment_context(cleaned_text, risk_keywords, category):
+    if llm_extract.get("departments") and not _is_pso_payment_context(cleaned_text, risk_keywords, category) and not account_aggregator_context:
         departments = _dedupe(llm_extract["departments"] + departments)[:8]
     evidence = _detect_evidence(cleaned_text, obligations, risk_keywords, category)
     title = _extract_title(text, file_name)
@@ -917,7 +1041,10 @@ def parse_circular_text(circular_text=None, file_name=None):
         for advisory in mapped_advisories
         if advisory.get("match_score", 0) > 1
     ]
-    affected_departments = departments if _is_pso_payment_context(cleaned_text, risk_keywords, category) else (mapped_departments or departments)
+    affected_departments = departments if (
+        _is_pso_payment_context(cleaned_text, risk_keywords, category)
+        or account_aggregator_context
+    ) else (mapped_departments or departments)
 
     if not obligations:
         engine_notes.append("No explicit obligation phrase was found; downstream agents should use manual-review fallback.")

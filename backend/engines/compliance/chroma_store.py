@@ -8,25 +8,25 @@ from typing import Any
 
 from .embeddings import embed_text
 
-try:
-    import chromadb
-except Exception:
-    chromadb = None
-
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BACKEND_DIR / "data"
-CHROMA_DIR = DATA_DIR / "chroma_db"
 CIRCULARS_DIR = DATA_DIR / "circulars"
 COMPLIANCE_DIR = DATA_DIR / "compliance"
+CHROMA_DIR = COMPLIANCE_DIR / "chroma"
 FALLBACK_MEMORY_PATH = COMPLIANCE_DIR / "regulatory_memory.json"
-COLLECTION_NAME = "rbi_regulatory_memory"
-EMBEDDING_DIMENSIONS = 128
+COLLECTION_NAME = "regulatory_memory"
+EMBEDDING_DIMENSIONS = 384
+MEMORY_BACKEND_MODES = {"auto", "chroma", "json"}
 
 _client = None
 _collection = None
 _client_mode = None
+_chromadb_module = None
+_chromadb_import_attempted = False
+_chroma_seed_attempted = False
 _last_chroma_error = None
+_last_active_backend = "json"
 
 CONTROL_VERBS = (
     "shall",
@@ -170,6 +170,7 @@ METADATA_LINE_KEYS = {
 }
 
 VALID_REFERENCE_DOMAINS = {
+    "account_aggregator",
     "digital_fraud",
     "it_outsourcing",
     "kyc_aml",
@@ -183,6 +184,19 @@ VALID_REFERENCE_DOMAINS = {
 }
 
 DOMAIN_KEYWORDS = (
+    (
+        "account_aggregator",
+        (
+            "account aggregator",
+            "financial information provider",
+            "clearing corporation of india limited",
+            "clearing corporation",
+            "ccil",
+            "retail direct gilt",
+            "government securities",
+            "g-sec",
+        ),
+    ),
     (
         "audit_governance",
         (
@@ -266,8 +280,6 @@ DOMAIN_KEYWORDS = (
             "settlement",
             "clearing corporation",
             "ccil",
-            "financial information provider",
-            "account aggregator",
         ),
     ),
     (
@@ -302,6 +314,7 @@ DOMAIN_KEYWORDS = (
 )
 
 DOMAIN_CATEGORIES = {
+    "account_aggregator": "Account Aggregator / Financial Information Provider / CCIL",
     "audit_governance": "IT Governance / Risk / Controls / Assurance",
     "cyber_incident": "Cyber Incident Response / CERT-In / SOC Escalation",
     "digital_fraud": "Digital Fraud / Customer Notification / Monitoring",
@@ -320,8 +333,44 @@ def _utc_now():
 
 
 def _ensure_dirs():
-    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     COMPLIANCE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _memory_backend_mode() -> str:
+    mode = (os.getenv("COMPLIANCE_MEMORY_BACKEND") or "auto").strip().lower()
+    return mode if mode in MEMORY_BACKEND_MODES else "auto"
+
+
+def _set_active_backend(backend: str) -> str:
+    global _last_active_backend
+    _last_active_backend = backend
+    return backend
+
+
+def active_memory_backend() -> str:
+    return _last_active_backend
+
+
+def _load_chromadb():
+    global _chromadb_module, _chromadb_import_attempted, _last_chroma_error
+    if _memory_backend_mode() == "json":
+        _last_chroma_error = "ChromaDB disabled by COMPLIANCE_MEMORY_BACKEND=json"
+        return None
+    if _chromadb_module is not None:
+        return _chromadb_module
+    if _chromadb_import_attempted:
+        return None
+
+    _chromadb_import_attempted = True
+    try:
+        import chromadb as loaded_chromadb
+    except Exception as exc:
+        _last_chroma_error = f"chromadb package is not available: {exc}"
+        return None
+
+    _chromadb_module = loaded_chromadb
+    _last_chroma_error = None
+    return _chromadb_module
 
 
 def _safe_metadata(metadata: dict[str, Any] | None) -> dict[str, str | int | float | bool]:
@@ -343,6 +392,14 @@ def _content_excerpt(content: str, limit: int = 220) -> str:
 
 def _is_user_reference_id(circular_id: str | None) -> bool:
     return bool(circular_id and str(circular_id).startswith("USER-REF-"))
+
+
+def _record_flags(circular_id: str | None, metadata: dict[str, Any] | None = None) -> tuple[bool, bool]:
+    metadata = metadata or {}
+    is_user_reference = _is_user_reference_id(circular_id)
+    seeded = bool(metadata.get("seeded")) if "seeded" in metadata else not is_user_reference
+    locked = bool(metadata.get("locked")) if "locked" in metadata else not is_user_reference
+    return locked, seeded
 
 
 def _main_status_scan_text(text: str) -> str:
@@ -822,10 +879,10 @@ def infer_reference_category(clean_text: str, domain: str, user_category: str | 
         return str(user_category).strip()
 
     lower = (clean_text or "").lower()
-    if domain == "digital_payment" and any(
+    if domain == "account_aggregator" and any(
         term in lower for term in ("account aggregator", "financial information provider", "clearing corporation", "ccil")
     ):
-        return "Account Aggregator / Financial Information Provider / RBI Approval"
+        return "Account Aggregator / Financial Information Provider / CCIL"
     return DOMAIN_CATEGORIES.get(domain, DOMAIN_CATEGORIES["general_compliance"])
 
 
@@ -960,13 +1017,26 @@ def _delete_fallback_record(circular_id: str) -> bool:
 def _fallback_record(circular_id: str, content: str, metadata: dict[str, Any] | None) -> dict[str, Any]:
     metadata = metadata or {}
     title = metadata.get("title") or metadata.get("file_name") or circular_id
+    domain = metadata.get("domain") or infer_reference_domain(content)
     category = metadata.get("category") or "Regulatory Compliance"
     display_text = display_reference_text(content)
     withdrawn = bool(metadata.get("withdrawn")) or _has_withdrawn_marker(content)
     source_status = metadata.get("source_status") or source_status_for_text(content)
+    locked, seeded = _record_flags(circular_id, metadata)
+    created_at = metadata.get("created_at") or metadata.get("stored_at") or metadata.get("issue_date") or "local_seed"
+    metadata = {
+        **metadata,
+        "circular_id": circular_id,
+        "domain": domain,
+        "category": category,
+        "locked": locked,
+        "seeded": seeded,
+        "created_at": created_at,
+    }
     return {
         "circular_id": circular_id,
         "title": title,
+        "domain": domain,
         "category": category,
         "content": content or "",
         "circular_text": content or "",
@@ -976,10 +1046,13 @@ def _fallback_record(circular_id: str, content: str, metadata: dict[str, Any] | 
         "display_text": display_text,
         "withdrawn": withdrawn,
         "source_status": source_status if withdrawn else metadata.get("source_status", ""),
+        "locked": locked,
+        "seeded": seeded,
+        "created_at": created_at,
         "metadata": metadata,
         "embedding": embed_text(content or "", dimensions=EMBEDDING_DIMENSIONS),
         "source": metadata.get("source", "local_seed"),
-        "updated_at": metadata.get("stored_at") or metadata.get("issue_date") or "local_seed",
+        "updated_at": metadata.get("stored_at") or created_at,
     }
 
 
@@ -1002,6 +1075,7 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
     display_text = record.get("display_text") or record.get("preview_text") or display_reference_text(content)
     withdrawn = bool(record.get("withdrawn")) or bool(metadata.get("withdrawn")) or _has_withdrawn_marker(content)
     source_status = record.get("source_status") or metadata.get("source_status") or source_status_for_text(content)
+    locked, seeded = _record_flags(circular_id, {**metadata, **record})
     return {
         "circular_id": circular_id,
         "id": circular_id,
@@ -1011,6 +1085,7 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
             user_title=record.get("title") or metadata.get("title"),
             fallback="Approved Policy Reference",
         ),
+        "domain": record.get("domain") or metadata.get("domain") or infer_reference_domain(content),
         "category": record.get("category") or metadata.get("category") or "Regulatory Compliance",
         "content": content,
         "circular_text": content,
@@ -1020,6 +1095,9 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
         "display_text": display_text,
         "withdrawn": withdrawn,
         "source_status": source_status if withdrawn else metadata.get("source_status", ""),
+        "locked": locked,
+        "seeded": seeded,
+        "created_at": record.get("created_at") or metadata.get("created_at") or metadata.get("stored_at") or metadata.get("issue_date"),
         "metadata": metadata,
         "similarity_score": round(float(similarity_score or 0.0), 4),
         "source": source or record.get("source") or metadata.get("source", "json_fallback"),
@@ -1027,48 +1105,120 @@ def _format_record(record: dict[str, Any], similarity_score: float | None = None
 
 
 def _chroma_available() -> bool:
-    return chromadb is not None
+    return _load_chromadb() is not None
+
+
+def _chroma_record_payload(record: dict[str, Any]) -> tuple[str, str, list[float], dict[str, Any]]:
+    formatted = _format_record(record)
+    circular_id = formatted["circular_id"]
+    content = formatted.get("content") or ""
+    metadata = {
+        **(formatted.get("metadata") or {}),
+        "circular_id": circular_id,
+        "title": formatted.get("title") or circular_id,
+        "domain": formatted.get("domain") or "general_compliance",
+        "category": formatted.get("category") or "Regulatory Compliance",
+        "source": formatted.get("source") or "json_fallback",
+        "locked": bool(formatted.get("locked")),
+        "seeded": bool(formatted.get("seeded")),
+        "created_at": formatted.get("created_at") or "local_seed",
+        "source_status": formatted.get("source_status") or "",
+        "withdrawn": bool(formatted.get("withdrawn")),
+    }
+    return circular_id, content, embed_text(content, dimensions=EMBEDDING_DIMENSIONS), metadata
+
+
+def _upsert_chroma_record(collection, record: dict[str, Any]) -> bool:
+    circular_id, content, embedding, metadata = _chroma_record_payload(record)
+    if not circular_id:
+        return False
+    collection.upsert(
+        ids=[circular_id],
+        documents=[content],
+        embeddings=[embedding],
+        metadatas=[_safe_metadata(metadata)],
+    )
+    return True
+
+
+def _seed_chroma_from_fallback_if_empty(collection) -> None:
+    global _chroma_seed_attempted, _last_chroma_error
+    if _chroma_seed_attempted:
+        return
+    _chroma_seed_attempted = True
+
+    try:
+        if collection.count() > 0:
+            return
+    except Exception as exc:
+        _last_chroma_error = f"ChromaDB count failed before seed: {exc}"
+        return
+
+    records = _read_fallback_memory()
+    if not records:
+        return
+
+    try:
+        ids = []
+        documents = []
+        embeddings = []
+        metadatas = []
+        for record in records:
+            circular_id, content, embedding, metadata = _chroma_record_payload(record)
+            if not circular_id:
+                continue
+            ids.append(circular_id)
+            documents.append(content)
+            embeddings.append(embedding)
+            metadatas.append(_safe_metadata(metadata))
+
+        if ids:
+            collection.upsert(
+                ids=ids,
+                documents=documents,
+                embeddings=embeddings,
+                metadatas=metadatas,
+            )
+    except Exception as exc:
+        _last_chroma_error = f"ChromaDB seed from JSON fallback failed: {exc}"
 
 
 def _get_collection():
     global _client, _collection, _client_mode, _last_chroma_error
-    if not _chroma_available():
-        _last_chroma_error = "chromadb package is not installed"
+    if _memory_backend_mode() == "json":
+        _set_active_backend("json")
+        _last_chroma_error = "ChromaDB disabled by COMPLIANCE_MEMORY_BACKEND=json"
+        return None
+
+    chromadb = _load_chromadb()
+    if chromadb is None:
+        _set_active_backend("json_fallback")
         return None
 
     if _collection is not None:
+        _set_active_backend("chroma")
         return _collection
 
     _ensure_dirs()
-    host = os.getenv("CHROMA_HOST")
-    port = os.getenv("CHROMA_PORT", "8000")
-
-    if host:
-        try:
-            _client = chromadb.HttpClient(host=host, port=int(port))
-            _collection = _client.get_or_create_collection(
-                name=COLLECTION_NAME,
-                metadata={"description": "Offline RBI regulatory memory"},
-            )
-            _client_mode = "http"
-            return _collection
-        except Exception as exc:
-            _last_chroma_error = f"HTTP Chroma unavailable: {exc}"
-            _client = None
-            _collection = None
-
     try:
+        CHROMA_DIR.mkdir(parents=True, exist_ok=True)
         _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         _collection = _client.get_or_create_collection(
             name=COLLECTION_NAME,
-            metadata={"description": "Offline RBI regulatory memory"},
+            metadata={
+                "description": "Offline RBI regulatory memory",
+                "embedding": f"deterministic_hash_{EMBEDDING_DIMENSIONS}",
+            },
         )
         _client_mode = "persistent"
+        _set_active_backend("chroma")
+        _seed_chroma_from_fallback_if_empty(_collection)
         return _collection
     except Exception as exc:
         _last_chroma_error = f"Persistent Chroma unavailable: {exc}"
         _client = None
         _collection = None
+        _set_active_backend("json_fallback")
         return None
 
 
@@ -1086,6 +1236,7 @@ def add_circular(circular: dict) -> dict:
 
 
 def store_circular(circular_id: str, content: str, metadata: dict | None = None) -> dict:
+    global _last_chroma_error
     _ensure_dirs()
     if not circular_id:
         return {"status": "error", "reason": "circular_id is required", "circular_id": circular_id}
@@ -1094,6 +1245,10 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
     metadata.setdefault("circular_id", circular_id)
     metadata.setdefault("source", "local_seed")
     metadata.setdefault("stored_at", metadata.get("issue_date") or "local_seed")
+    locked, seeded = _record_flags(circular_id, metadata)
+    metadata.setdefault("locked", locked)
+    metadata.setdefault("seeded", seeded)
+    metadata.setdefault("created_at", metadata.get("stored_at") or metadata.get("issue_date") or _utc_now())
     if metadata.get("source_type") == "User added approved reference" or str(circular_id or "").startswith("USER-REF-"):
         original_content = content or ""
         content = clean_reference_text(original_content)
@@ -1106,6 +1261,8 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
         )
         metadata["domain"] = infer_reference_domain(content, metadata.get("domain"))
         metadata["category"] = infer_reference_category(content, metadata["domain"], metadata.get("category"))
+        metadata["locked"] = False
+        metadata["seeded"] = False
         metadata["withdrawn"] = _has_withdrawn_marker(original_content) or _has_withdrawn_marker(content)
         if metadata["withdrawn"]:
             metadata["source_status"] = "Withdrawn / archived"
@@ -1121,27 +1278,27 @@ def store_circular(circular_id: str, content: str, metadata: dict | None = None)
             "status": "stored_fallback",
             "reason": _last_chroma_error or "ChromaDB unavailable",
             "circular_id": circular_id,
+            "memory_backend": active_memory_backend(),
             "fallback_memory_path": str(FALLBACK_MEMORY_PATH),
         }
 
     try:
-        collection.upsert(
-            ids=[circular_id],
-            documents=[content or ""],
-            embeddings=[record["embedding"]],
-            metadatas=[_safe_metadata(metadata)],
-        )
+        _upsert_chroma_record(collection, record)
         return {
             "status": "stored",
             "circular_id": circular_id,
             "chroma_mode": _client_mode,
+            "memory_backend": active_memory_backend(),
             "fallback_memory_path": str(FALLBACK_MEMORY_PATH),
         }
     except Exception as exc:
+        _last_chroma_error = f"ChromaDB upsert failed: {exc}"
+        _set_active_backend("json_fallback")
         return {
             "status": "stored_fallback",
             "reason": str(exc),
             "circular_id": circular_id,
+            "memory_backend": active_memory_backend(),
             "fallback_memory_path": str(FALLBACK_MEMORY_PATH),
         }
 
@@ -1227,12 +1384,7 @@ def cleanup_user_references() -> dict:
         if collection is not None:
             for record in changed_records:
                 try:
-                    collection.upsert(
-                        ids=[record["circular_id"]],
-                        documents=[record.get("content") or ""],
-                        embeddings=[record["embedding"]],
-                        metadatas=[_safe_metadata(record.get("metadata") or {})],
-                    )
+                    _upsert_chroma_record(collection, record)
                 except Exception:
                     continue
 
@@ -1282,7 +1434,7 @@ def _search_fallback(query: str, n_results: int = 3) -> list[dict[str, Any]]:
 
     for record in _read_fallback_memory():
         embedding = record.get("embedding")
-        if not isinstance(embedding, list):
+        if not isinstance(embedding, list) or len(embedding) != EMBEDDING_DIMENSIONS:
             embedding = embed_text(record.get("content", ""), dimensions=EMBEDDING_DIMENSIONS)
         score = _cosine_similarity(query_embedding, embedding)
         scored.append((score, record))
@@ -1296,6 +1448,7 @@ def _search_fallback(query: str, n_results: int = 3) -> list[dict[str, Any]]:
 
 
 def search_similar(query: str, n_results: int = 3) -> list:
+    global _last_chroma_error
     if not query or not query.strip() or n_results <= 0:
         return []
 
@@ -1304,7 +1457,8 @@ def search_similar(query: str, n_results: int = 3) -> list:
         try:
             count = collection.count()
             if count == 0:
-                return []
+                _set_active_backend("json_fallback")
+                return _search_fallback(query, n_results=n_results)
 
             results = collection.query(
                 query_embeddings=[embed_text(query, dimensions=EMBEDDING_DIMENSIONS)],
@@ -1336,10 +1490,17 @@ def search_similar(query: str, n_results: int = 3) -> list:
                         source=f"chroma_{_client_mode}",
                     )
                 )
-            return formatted
-        except Exception:
+            if formatted:
+                _set_active_backend("chroma")
+                return formatted
+            _set_active_backend("json_fallback")
+            return _search_fallback(query, n_results=n_results)
+        except Exception as exc:
+            _last_chroma_error = f"ChromaDB query failed: {exc}"
+            _set_active_backend("json_fallback")
             return _search_fallback(query, n_results=n_results)
 
+    _set_active_backend("json" if _memory_backend_mode() == "json" else "json_fallback")
     return _search_fallback(query, n_results=n_results)
 
 
@@ -1348,32 +1509,32 @@ def list_circulars() -> list:
 
 
 def list_stored_circulars() -> list:
-    records = _read_fallback_memory()
-    if records:
-        return [_format_record(record, source="json_fallback") for record in records]
-
     collection = _get_collection()
-    if collection is None:
-        return []
+    if collection is not None:
+        try:
+            result = collection.get(include=["documents", "metadatas"])
+            ids = result.get("ids", [])
+            documents = result.get("documents", [])
+            metadatas = result.get("metadatas", [])
+            if ids:
+                _set_active_backend("chroma")
+                return [
+                    _format_record(
+                        {
+                            "circular_id": ids[index],
+                            "content": documents[index] if index < len(documents) else "",
+                            "metadata": metadatas[index] if index < len(metadatas) else {},
+                        },
+                        source=f"chroma_{_client_mode}",
+                    )
+                    for index in range(len(ids))
+                ]
+        except Exception:
+            _set_active_backend("json_fallback")
 
-    try:
-        result = collection.get(include=["documents", "metadatas"])
-        ids = result.get("ids", [])
-        documents = result.get("documents", [])
-        metadatas = result.get("metadatas", [])
-        return [
-            _format_record(
-                {
-                    "circular_id": ids[index],
-                    "content": documents[index] if index < len(documents) else "",
-                    "metadata": metadatas[index] if index < len(metadatas) else {},
-                },
-                source=f"chroma_{_client_mode}",
-            )
-            for index in range(len(ids))
-        ]
-    except Exception:
-        return []
+    records = _read_fallback_memory()
+    _set_active_backend("json" if _memory_backend_mode() == "json" else "json_fallback")
+    return [_format_record(record, source=active_memory_backend()) for record in records]
 
 
 def clear_store() -> dict:
@@ -1407,13 +1568,24 @@ def store_status() -> dict:
     if collection is not None:
         try:
             count = collection.count()
+            _set_active_backend("chroma")
         except Exception:
             count = 0
+            _set_active_backend("json_fallback")
+    elif _memory_backend_mode() == "json":
+        _set_active_backend("json")
+    else:
+        _set_active_backend("json_fallback")
 
     return {
+        "active_backend": active_memory_backend(),
+        "configured_backend": _memory_backend_mode(),
         "chroma_available": collection is not None,
         "chroma_mode": _client_mode,
         "chroma_error": _last_chroma_error,
+        "chroma_path": str(CHROMA_DIR),
+        "collection_name": COLLECTION_NAME,
+        "embedding_dimensions": EMBEDDING_DIMENSIONS,
         "collection_count": count,
         "fallback_memory_path": str(FALLBACK_MEMORY_PATH),
         "fallback_count": len(_read_fallback_memory()),

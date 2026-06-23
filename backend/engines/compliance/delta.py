@@ -21,6 +21,7 @@ except Exception:
 
 NO_PRIOR_POLICY = "No matching prior policy found."
 NO_CLOSE_PSO_REFERENCE = "No closely matching approved PSO reference found in the current policy library."
+NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE = "No closely matching approved Account Aggregator reference found in the current policy library."
 LLM_CHANGE_TYPES = {
     "missing_policy",
     "deadline_changed",
@@ -82,6 +83,15 @@ PSO_EVIDENCE = (
     "Legal review note",
     "Compliance sign-off",
     "Closure record",
+)
+
+ACCOUNT_AGGREGATOR_EVIDENCE = (
+    "Updated Account Aggregator policy",
+    "CCIL FIP inclusion record",
+    "Application/configuration update proof",
+    "Compliance sign-off",
+    "Stakeholder communication proof",
+    "Implementation closure record",
 )
 
 CONTROL_VERBS = (
@@ -212,6 +222,20 @@ PSO_REFERENCE_TERMS = (
     "ppi",
 )
 
+ACCOUNT_AGGREGATOR_REFERENCE_TERMS = (
+    "account aggregator",
+    "financial information provider",
+    "fip",
+    "clearing corporation of india limited",
+    "ccil",
+    "retail direct gilt",
+    "government securities",
+    "g-sec",
+    "data sharing",
+    "consent artefact",
+    "consent artifact",
+)
+
 NOISY_REFERENCE_TERMS = (
     "circular reference date subject remarks",
     "reference date subject remarks",
@@ -227,6 +251,16 @@ NOISY_REFERENCE_TERMS = (
 )
 
 DOMAIN_TERMS = {
+    "account_aggregator": (
+        "account aggregator",
+        "financial information provider",
+        "fip",
+        "clearing corporation of india limited",
+        "ccil",
+        "retail direct gilt",
+        "government securities",
+        "g-sec",
+    ),
     "digital_payment": (
         "pso",
         "payment system operator",
@@ -296,6 +330,7 @@ DOMAIN_TERMS = {
 }
 
 DEPARTMENT_BY_DOMAIN = {
+    "account_aggregator": "Regulatory Compliance Department + Digital Banking / Account Aggregator Operations",
     "digital_payment": "Payments Vertical / Payment Systems Compliance",
     "it_inventory": "IT Vertical",
     "it_policy": "Compliance Department + Risk Management + IT Vertical",
@@ -317,6 +352,7 @@ DEPARTMENT_BY_DOMAIN = {
 }
 
 EVIDENCE_BY_DOMAIN = {
+    "account_aggregator": "Updated Account Aggregator policy, CCIL FIP inclusion record, Application/configuration update proof, Compliance sign-off, Stakeholder communication proof, and Implementation closure record",
     "digital_payment": "RBI prior approval application, DPSS acknowledgement, Board approval, Legal review note, Compliance sign-off, and Closure record",
     "it_inventory": "Outsourcing policy, audit report, and management approval",
     "it_policy": "Outsourcing policy and management approval",
@@ -338,6 +374,7 @@ EVIDENCE_BY_DOMAIN = {
 }
 
 RISK_KEYWORDS_BY_DOMAIN = {
+    "account_aggregator": ["account aggregator", "financial information provider"],
     "digital_payment": ["payment system approval", "digital payment"],
     "it_inventory": ["IT outsourcing", "third-party risk"],
     "it_policy": ["IT outsourcing", "third-party risk"],
@@ -523,6 +560,35 @@ def _is_pso_payment_context(text):
     return _contains_any(text, PSO_REFERENCE_TERMS)
 
 
+def _is_account_aggregator_context(text):
+    return _contains_any(text, ACCOUNT_AGGREGATOR_REFERENCE_TERMS)
+
+
+def _has_account_aggregator_reference(text):
+    lower = (text or "").lower()
+    aa_anchor = any(
+        term in lower
+        for term in (
+            "account aggregator",
+            "financial information provider",
+            "clearing corporation of india limited",
+            "ccil",
+        )
+    )
+    data_anchor = any(
+        term in lower
+        for term in (
+            "retail direct gilt",
+            "government securities",
+            "fip",
+            "data sharing",
+            "consent",
+            "framework",
+        )
+    )
+    return aa_anchor and data_anchor
+
+
 def _has_pso_reference(text):
     lower = (text or "").lower()
     anchor_terms = (
@@ -536,9 +602,6 @@ def _has_pso_reference(text):
         "certificate of authorisation",
         "certificate of authorization",
         "payment and settlement systems act",
-        "payment aggregator",
-        "payment gateway",
-        "ppi",
     )
     action_terms = (
         "prior approval",
@@ -584,6 +647,8 @@ def _is_generic_audit_evidence_only(text):
 
 def _domain_for_obligation(obligation):
     lower = (obligation or "").lower()
+    if _is_account_aggregator_context(obligation):
+        return "account_aggregator"
     if _is_pso_payment_context(obligation):
         return "digital_payment"
     if _is_fraud_reporting_timeline_obligation(obligation):
@@ -684,6 +749,8 @@ def _severity(domain, change_type, new_deadline=None, old_deadline=None):
 
     if domain == "digital_payment":
         return "High" if change_type in {"missing_policy", "deadline_changed", "new_obligation"} else "Medium"
+    if domain == "account_aggregator":
+        return "High" if change_type in {"missing_policy", "new_obligation"} else "Medium"
     if change_type == "deadline_changed" and new_minutes is not None:
         if new_minutes <= 4 * 60:
             return "Critical"
@@ -772,6 +839,26 @@ def _score_document(document_text, scout_result, obligation_domains, obligations
                 score += 1
 
     for obligation in obligations or []:
+        if _is_account_aggregator_context(obligation):
+            if _has_account_aggregator_reference(text):
+                score += 28
+            else:
+                score -= 18
+            if any(
+                term in text
+                for term in (
+                    "digital fraud",
+                    "fraud reporting",
+                    "customer notification",
+                    "cert-in",
+                    "cyber incident",
+                    "payment system operator",
+                    "non-bank pso",
+                    "it outsourcing",
+                    "outsourcing agreement",
+                )
+            ):
+                score -= 24
         if _is_pso_payment_context(obligation):
             if _has_pso_reference(text):
                 score += 28
@@ -832,7 +919,9 @@ def _context_terms_for_requirement(domain, obligation):
         if _is_cyber_incident_obligation(obligation):
             terms.extend(CYBER_INCIDENT_REFERENCE_TERMS)
 
-    if domain == "digital_payment" or _is_pso_payment_context(obligation):
+    if domain == "account_aggregator" or _is_account_aggregator_context(obligation):
+        terms.extend(ACCOUNT_AGGREGATOR_REFERENCE_TERMS)
+    elif domain == "digital_payment" or _is_pso_payment_context(obligation):
         terms.extend(PSO_REFERENCE_TERMS)
     elif _is_fraud_reporting_timeline_obligation(obligation):
         terms.extend(FRAUD_REPORTING_REFERENCE_TERMS)
@@ -877,6 +966,28 @@ def _reference_passage_score(
         if preferred_matches:
             score += 24 + min(36, preferred_matches * 6)
         if any(term in lower for term in ("digital fraud", "fraud reporting", "customer notification", "cert-in", "cyber incident")):
+            score -= 48
+        if preferred_matches == 0:
+            score -= 32
+
+    if domain == "account_aggregator" or _is_account_aggregator_context(obligation):
+        preferred_matches = sum(1 for term in ACCOUNT_AGGREGATOR_REFERENCE_TERMS if term in lower)
+        if preferred_matches:
+            score += 24 + min(36, preferred_matches * 6)
+        if any(
+            term in lower
+            for term in (
+                "digital fraud",
+                "fraud reporting",
+                "customer notification",
+                "cert-in",
+                "cyber incident",
+                "payment system operator",
+                "non-bank pso",
+                "it outsourcing",
+                "outsourcing agreement",
+            )
+        ):
             score -= 48
         if preferred_matches == 0:
             score -= 32
@@ -934,6 +1045,9 @@ def _find_relevant_old_requirement(domain, documents, obligation):
 
     if domain == "digital_payment" and (best_score < 30 or not _has_pso_reference(best_passage)):
         return NO_CLOSE_PSO_REFERENCE, None
+
+    if domain == "account_aggregator" and (best_score < 30 or not _has_account_aggregator_reference(best_passage)):
+        return NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE, None
 
     if best_score == 0:
         return NO_PRIOR_POLICY, None
@@ -1061,7 +1175,7 @@ def _it_outsourcing_evidence_for_obligation(obligation):
 
 
 def _change_type(old_requirement, new_requirement, domain):
-    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE}:
+    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE, NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE}:
         return "missing_policy"
 
     old_deadline = _primary_deadline(old_requirement)
@@ -1124,6 +1238,12 @@ def _gap_dimensions(new_requirement):
         dimensions.append("public notice and stakeholder intimation")
     if any(term in lower for term in ("form a", "certificate of authorisation", "certificate of authorization", "surrender")):
         dimensions.append("Form A / CoA documentation")
+    if any(term in lower for term in ("account aggregator", "financial information provider", "fip", "ccil")):
+        dimensions.append("Account Aggregator / FIP reference update")
+    if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec")):
+        dimensions.append("Retail Direct Gilt / Government Securities data sharing workflow")
+    if any(term in lower for term in ("systems", "application", "configuration", "policy references")):
+        dimensions.append("system and policy register update")
 
     return _dedupe(dimensions) or ["specific workflow, evidence, owner, and audit trail"]
 
@@ -1135,6 +1255,8 @@ def _gap_message(change_type, old_requirement, new_requirement, domain):
 
     if domain == "digital_payment" and old_requirement == NO_CLOSE_PSO_REFERENCE:
         return f"New/insufficient PSO policy coverage: approved digital payment policy does not capture {dimensions} required by: {new_requirement}"
+    if domain == "account_aggregator" and old_requirement == NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE:
+        return f"New/insufficient Account Aggregator policy coverage: approved references do not capture {dimensions} required by: {new_requirement}"
     if change_type == "deadline_changed":
         return f"Existing {domain} process uses timeline {old_deadline or 'not captured'} but new circular requires {new_deadline}; timeline update is missing."
     if change_type == "missing_policy":
@@ -1152,6 +1274,15 @@ def _gap_message(change_type, old_requirement, new_requirement, domain):
 
 def _department_for_gap(domain, obligation):
     lower = (obligation or "").lower()
+    if domain == "account_aggregator":
+        departments = ["Regulatory Compliance Department", "Digital Banking / Account Aggregator Operations"]
+        if any(term in lower for term in ("government securities", "retail direct gilt", "g-sec", "ccil")):
+            departments.append("Treasury / Government Securities Operations")
+        if any(term in lower for term in ("framework", "policy", "reference", "included", "inclusion")):
+            departments.append("Legal & Secretarial")
+        if any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+            departments.append("IT/Application Owner for Account Aggregator integration")
+        return " + ".join(_dedupe(departments)[:4])
     if domain == "digital_payment":
         departments = ["Payments Vertical / Payment Systems Compliance"]
         if any(term in lower for term in ("prior approval", "rbi", "dpss", "form a", "certificate of authorisation", "certificate of authorization")):
@@ -1178,6 +1309,9 @@ def _department_for_gap(domain, obligation):
 
 def _evidence_for_gap(domain, obligation, scout=None):
     lower = (obligation or "").lower()
+    if domain == "account_aggregator":
+        evidence = list(ACCOUNT_AGGREGATOR_EVIDENCE)
+        return _join_evidence(evidence)
     if domain == "digital_payment":
         evidence = []
         if any(term in lower for term in ("prior approval", "rbi approval", "takeover", "acquisition of control")):
@@ -1301,6 +1435,43 @@ def _fixed_payment_advisory(obligation):
     }
 
 
+def _fixed_account_aggregator_advisory(obligation):
+    lower = (obligation or "").lower()
+    if any(term in lower for term in ("retail direct gilt", "government securities", "g-sec")):
+        row = {
+            "business_vertical": "Treasury / Government Securities Operations",
+            "sub_vertical": "Retail Direct Gilt Operations",
+            "scope": "Government Securities data sharing under Account Aggregator",
+        }
+    elif any(term in lower for term in ("systems", "application", "configuration", "integration", "data sharing")):
+        row = {
+            "business_vertical": "IT/Application Owner for Account Aggregator integration",
+            "sub_vertical": "Account Aggregator Platform Integration",
+            "scope": "FIP configuration and data sharing workflow update",
+        }
+    elif any(term in lower for term in ("policy", "framework", "reference", "included", "inclusion")):
+        row = {
+            "business_vertical": "Regulatory Compliance Department",
+            "sub_vertical": "Account Aggregator Compliance",
+            "scope": "Policy/reference register update for CCIL FIP inclusion",
+        }
+    else:
+        row = {
+            "business_vertical": "Digital Banking / Account Aggregator Operations",
+            "sub_vertical": "Account Aggregator Operations",
+            "scope": "Operational readiness for CCIL as Financial Information Provider",
+        }
+
+    return {
+        **row,
+        "primary_regulator": "RBI",
+        "regulatory_reference": "Account Aggregator Framework - Financial Information Provider inclusion",
+        "official_link": "",
+        "match_score": 100,
+        "assignment_basis": "Deterministic account_aggregator / FIP / CCIL domain mapping.",
+    }
+
+
 def _fallback_advisory(department, obligation):
     lower = (obligation or "").lower()
     if "customer" in lower or "notify" in lower:
@@ -1329,6 +1500,8 @@ def _fallback_advisory(department, obligation):
 
 
 def _advisory_for_gap(obligation, domain, scout, department):
+    if domain == "account_aggregator":
+        return _fixed_account_aggregator_advisory(obligation)
     if domain == "digital_payment":
         return _fixed_payment_advisory(obligation)
     if domain == "customer":
@@ -1352,6 +1525,8 @@ def _advisory_for_gap(obligation, domain, scout, department):
 
 
 def _basis(change_type, old_requirement, new_requirement):
+    if old_requirement == NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE:
+        return "No closely matching approved Account Aggregator reference was found in the current policy library; unrelated fraud/cyber/PSO/IT outsourcing references were not used."
     if old_requirement == NO_CLOSE_PSO_REFERENCE:
         return "No closely matching approved PSO reference was found in the current policy library; unrelated fraud/cyber references were not used."
     if old_requirement == NO_PRIOR_POLICY:
@@ -1395,7 +1570,7 @@ def _is_concrete_llm_gap(summary, obligation):
 def _try_local_llm_delta(obligation, old_requirement, domain):
     if get_llm_mode() == "rules" or not is_llm_enabled() or compare_obligation_to_reference is None:
         return None
-    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE}:
+    if old_requirement in {NO_PRIOR_POLICY, NO_CLOSE_PSO_REFERENCE, NO_CLOSE_ACCOUNT_AGGREGATOR_REFERENCE}:
         return None
 
     result = compare_obligation_to_reference(
